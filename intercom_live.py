@@ -438,6 +438,19 @@ class VoiceBook:
                 v["ignored"] = action == "ignore"
             self.save()
 
+    def purge_unknown(self) -> int:
+        """Supprime toutes les voix jamais nommées (« Voix N ») ; garde les nommées et les ignorées."""
+        with self.lock:
+            n = 0
+            for i, v in enumerate(self.voices):
+                r = self.voices[self._root(i)]
+                if not v["deleted"] and not r["named"] and not r["ignored"]:
+                    v["deleted"] = True
+                    n += v["alias"] is None
+            self.next_n = 1
+            self.save()
+            return n
+
     def public(self) -> list[dict]:
         with self.lock:
             out = []
@@ -1042,6 +1055,10 @@ def make_handler(cfg: Config, bus: EventBus, eng: Engine, live: "LiveAudio | Non
             elif self.path == "/quit":
                 self._json({"ok": True})
                 threading.Timer(0.3, lambda: os._exit(0)).start()
+            elif self.path == "/purge-voices" and eng.voices:
+                n = eng.voices.purge_unknown()
+                bus.publish({"type": "speakers", "speakers": eng.voices.public()})
+                self._json({"ok": True, "removed": n})
             elif self.path == "/voice" and eng.voices:
                 eng.voices.act(int(req["speaker"]), str(req.get("action", "")), str(req.get("name", "")),
                                req.get("into"))

@@ -6,181 +6,307 @@
 <title>Intercom Live</title>
 <style>
   :root {
-    --bg: #0e1013; --panel: #171a1f; --line: #232831; --text: #e8eaed; --muted: #8a919c;
-    --alert: #ffb300; --alert-bg: rgba(255,179,0,.12);
+    --bg: #05080a; --bg2: #0a1014; --panel: rgba(14, 22, 27, .82); --line: #16232a; --line2: #22343d;
+    --text: #e6f1ef; --muted: #6f8a8f; --dim: #3c5257;
+    --ph: #4dffc3;            /* phosphore */
+    --ph2: rgba(77, 255, 195, .14);
+    --tally: #ff3b30; --alert: #ffcc00; --alert-bg: rgba(255, 204, 0, .10);
+    --mono: "SF Mono", ui-monospace, Menlo, "JetBrains Mono", monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", sans-serif;
   }
   * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
-    font: 16px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif; }
-  body { display: flex; flex-direction: column; }
-  header { display: flex; gap: 8px; align-items: center; padding: 10px 14px; background: var(--panel);
-    border-bottom: 1px solid var(--line); flex-wrap: wrap; }
-  .spk { display: flex; align-items: center; gap: 8px; padding: 6px 10px 6px 8px; border-radius: 8px;
-    border: 1px solid var(--line); cursor: pointer; user-select: none; min-width: 120px; transition: .12s; }
+  html, body { margin: 0; height: 100%; color: var(--text); font: 15px/1.4 var(--sans); overflow: hidden; }
+  body {
+    background:
+      radial-gradient(1200px 600px at 70% -10%, rgba(77,255,195,.07), transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, rgba(80,120,255,.06), transparent 60%),
+      linear-gradient(var(--bg), var(--bg2));
+    display: grid; grid-template-rows: auto auto 1fr; grid-template-columns: 236px 1fr; grid-template-areas: "top top" "banner banner" "rail main";
+  }
+  /* grille de fond + balayage, très discrets */
+  body::before { content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background-image: linear-gradient(rgba(77,255,195,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(77,255,195,.035) 1px, transparent 1px);
+    background-size: 48px 48px; mask-image: radial-gradient(ellipse at center, #000 30%, transparent 85%); }
+  body::after { content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 60;
+    background: repeating-linear-gradient(transparent 0 2px, rgba(0,0,0,.12) 2px 3px); mix-blend-mode: multiply; }
+  header, #rail, main, #banner { position: relative; z-index: 1; min-width: 0; }
+  .ln .x { overflow-wrap: anywhere; }
+
+  /* cadre HUD : coins en équerre */
+  .hud { position: relative; background: var(--panel); border: 1px solid var(--line); backdrop-filter: blur(14px); }
+  .hud::before, .hud::after { content: ""; position: absolute; width: 12px; height: 12px; pointer-events: none;
+    border: 2px solid var(--ph); opacity: .55; }
+  .hud::before { top: -1px; left: -1px; border-right: 0; border-bottom: 0; }
+  .hud::after { bottom: -1px; right: -1px; border-left: 0; border-top: 0; }
+  .lab { font: 600 10px/1 var(--mono); letter-spacing: .18em; text-transform: uppercase; color: var(--muted); }
+
+  /* ---------- barre du haut */
+  header { grid-area: top; display: flex; align-items: stretch; gap: 10px; padding: 10px 12px 8px; }
+  .brand { display: flex; flex-direction: column; justify-content: center; gap: 6px; padding: 8px 14px; min-width: 200px; }
+  .brand b { font: 800 17px/1 var(--mono); letter-spacing: .14em; }
+  .brand b span { color: var(--ph); text-shadow: 0 0 12px var(--ph); }
+  .brand .st { display: flex; align-items: center; gap: 7px; }
+  .brand .st i { width: 7px; height: 7px; border-radius: 50%; background: var(--dim); }
+  .brand .st.ok i { background: var(--ph); box-shadow: 0 0 8px var(--ph); animation: pulse 2s infinite; }
+  #status { font: 500 11px var(--mono); color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
+
+  #live { flex: 1; display: flex; align-items: center; gap: 12px; padding: 6px 12px 6px 10px; min-width: 0; }
+  #live .tally { flex: none; display: grid; place-items: center; width: 64px; height: 46px; border-radius: 4px;
+    font: 800 13px var(--mono); letter-spacing: .2em; color: #4a2420; background: #1a0e0d; border: 1px solid #3a1714; transition: .08s; }
+  #live.on .tally { color: #fff; background: var(--tally); border-color: #ff8a80; box-shadow: 0 0 22px rgba(255,59,48,.65), inset 0 0 10px rgba(255,255,255,.3); }
+  #scope { flex: 1; height: 46px; min-width: 60px; display: block; cursor: ns-resize; }
+  #live .db { flex: none; width: 64px; text-align: right; font: 600 12px var(--mono); color: var(--muted); }
+  #live .db b { display: block; font-size: 18px; color: var(--text); }
+  #live .vu { display: none; }   /* gardé pour le code, remplacé par l'oscillo */
+
+  .tools { display: flex; gap: 6px; align-items: center; padding: 6px 8px; }
+  button { background: transparent; color: var(--text); border: 1px solid var(--line2); border-radius: 4px; padding: 7px 10px;
+    font: 600 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; cursor: pointer; transition: .12s; white-space: nowrap; }
+  button:hover { border-color: var(--ph); color: var(--ph); box-shadow: 0 0 0 1px var(--ph2) inset; }
+  button.on { color: var(--ph); border-color: rgba(77,255,195,.5); background: var(--ph2); }
+  button.danger, .danger { color: #ff8a80; }
+  button.danger:hover { border-color: #ff8a80; color: #ff8a80; }
+
+  #banner { grid-area: banner; margin: 0 12px 8px; padding: 8px 14px; font: 500 12px var(--mono); color: var(--ph);
+    border: 1px solid rgba(77,255,195,.35); background: rgba(77,255,195,.06); }
+
+  /* ---------- rail des voix */
+  #rail { grid-area: rail; margin: 0 0 12px 12px; display: flex; flex-direction: column; min-height: 0; }
+  #rail .head { display: flex; justify-content: space-between; align-items: center; padding: 12px 12px 8px; }
+  #rail .head .n { font: 600 11px var(--mono); color: var(--ph); }
+  #spks { flex: 1; overflow-y: auto; padding: 2px 10px 10px; display: flex; flex-direction: column; gap: 6px; }
+  .spk { --c: #888; position: relative; display: grid; grid-template-columns: 6px 1fr auto; align-items: center; gap: 10px;
+    padding: 9px 10px 9px 0; border: 1px solid var(--line); background: rgba(255,255,255,.015); cursor: pointer; user-select: none;
+    border-radius: 3px; transition: .15s; overflow: hidden; }
+  .spk:hover { border-color: var(--line2); background: rgba(255,255,255,.035); }
+  .spk .dot { height: 100%; min-height: 30px; background: var(--c); opacity: .35; transition: .12s; }
+  .spk .nm { font-weight: 650; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .spk .sub { display: block; font: 500 10px var(--mono); color: var(--muted); letter-spacing: .08em; margin-top: 2px; }
+  .spk .cnt { font: 600 11px var(--mono); color: var(--dim); }
+  .spk.talking { border-color: var(--c); box-shadow: 0 0 18px -4px var(--c), inset 0 0 24px -12px var(--c); }
+  .spk.talking .dot { opacity: 1; box-shadow: 0 0 12px var(--c); }
+  .spk.talking .cnt { color: var(--c); }
+  .spk.unnamed .nm { font-style: italic; color: #b9c9c8; }
   .spk.off { opacity: .35; }
-  .spk .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--c); opacity: .25; transition: .08s; }
-  .spk.talking { border-color: var(--c); box-shadow: 0 0 0 1px var(--c) inset; }
-  .spk.talking .dot { opacity: 1; box-shadow: 0 0 10px var(--c); }
-  .spk .nm { font-weight: 600; font-size: 14px; }
-  .vu { width: 46px; height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; margin-left: auto; }
-  .vu i { display: block; height: 100%; width: 0; background: var(--c); }
-  .tools { margin-left: auto; display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 13px; }
-  button { background: var(--line); color: var(--text); border: 0; border-radius: 6px; padding: 6px 10px;
-    font: inherit; font-size: 13px; cursor: pointer; }
-  button.on { background: #2e7d32; }
-  #log { flex: 1; overflow-y: auto; padding: 10px 14px 40px; }
-  .ln { display: grid; grid-template-columns: 64px 130px 1fr; gap: 10px; padding: 7px 8px; border-radius: 6px;
-    align-items: baseline; animation: in .25s ease-out; }
-  .ln + .ln { border-top: 1px solid var(--line); }
-  .ln .t { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 13px; }
-  .ln .n { font-weight: 700; color: var(--c); text-align: right; }
-  .ln .x { font-size: var(--fs, 20px); }
-  .ln.alert { background: var(--alert-bg); box-shadow: inset 3px 0 0 var(--alert); }
-  .ln.alert .x mark { background: var(--alert); color: #000; padding: 0 3px; border-radius: 3px; }
-  .ln.hidden { display: none; }
-  .spk .nm[contenteditable="true"] { outline: 1px dashed var(--muted); padding: 0 4px; border-radius: 3px; }
-  .spk.unnamed .nm { font-style: italic; }
-  #live { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line);
-    font-size: 13px; color: var(--muted); }
-  #live .dot { width: 10px; height: 10px; border-radius: 50%; background: #e53935; opacity: .2; transition: .08s; }
-  #live.on .dot { opacity: 1; box-shadow: 0 0 10px #e53935; }
-  #live.on { color: var(--text); }
-  #live .vu { width: 60px; }
-  #live .vu i { background: #e53935; }
-  #panel { background: var(--panel); border-bottom: 1px solid var(--line); padding: 12px 14px; display: flex; gap: 14px;
-    align-items: end; flex-wrap: wrap; font-size: 14px; }
-  #panel label { display: flex; flex-direction: column; gap: 4px; color: var(--muted); font-size: 12px; }
-  #panel select { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px;
-    padding: 6px 8px; font: inherit; font-size: 14px; min-width: 120px; max-width: 100%; }
-  #panel .bigvu { width: 180px; height: 10px; background: var(--line); border-radius: 5px; overflow: hidden; margin-bottom: 9px; }
-  #panel .bigvu i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #43a047 70%, #fdd835 85%, #e53935); }
-  #astate { flex-basis: 100%; font-size: 13px; color: var(--muted); }
-  #astate.err { color: #ff8a80; }
-  #banner { background: #1a237e; color: #fff; padding: 8px 14px; font-size: 14px; }
   .spk.ign { opacity: .45; }
   .spk.ign .nm { text-decoration: line-through; }
-  #menu { position: fixed; z-index: 10; width: 320px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
-    box-shadow: 0 10px 30px rgba(0,0,0,.5); padding: 10px; display: flex; flex-direction: column; gap: 6px; }
-  #menu[hidden], #panel[hidden], #live[hidden], .hint[hidden], #banner[hidden] { display: none; }
+  .spk .vu { grid-column: 2 / 4; height: 3px; background: var(--line); }
+  .spk .vu i { display: block; height: 100%; width: 0; background: var(--c); }
+  #purge { margin: 0 10px 10px; padding: 9px; white-space: normal; }
+  #purge[disabled] { opacity: .35; pointer-events: none; }
+  .hint { padding: 0 12px 12px; font-size: 11px; color: var(--muted); line-height: 1.45; }
+
+  /* ---------- transcription */
+  main { grid-area: main; margin: 0 12px 12px 10px; display: flex; flex-direction: column; min-height: 0; }
+  main .head { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px 8px; border-bottom: 1px solid var(--line); }
+  #clock { font: 600 12px var(--mono); color: var(--ph); letter-spacing: .1em; }
+  #log { flex: 1; overflow-y: auto; padding: 8px 10px 30vh; scroll-behavior: smooth;
+    mask-image: linear-gradient(transparent, #000 50px); }
+  .ln { --c: #888; position: relative; display: grid; grid-template-columns: 70px 120px 1fr; gap: 14px; align-items: baseline;
+    padding: 9px 12px; margin: 2px 0; border-left: 2px solid transparent; animation: in .35s cubic-bezier(.2,.8,.2,1);
+    opacity: .5; transition: opacity .4s, background .4s; }
+  .ln:nth-last-child(-n+4) { opacity: .78; }
+  .ln:last-child { opacity: 1; background: linear-gradient(90deg, color-mix(in srgb, var(--c) 12%, transparent), transparent 70%); border-left-color: var(--c); }
+  .ln:hover { opacity: 1; }
+  .ln .t { font: 500 12px var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+  .ln .n { font: 700 12px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--c); text-align: right;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ln .x { font-size: var(--fs, 20px); line-height: 1.35; font-weight: 450; }
+  .ln.alert { opacity: 1; background: var(--alert-bg); border-left-color: var(--alert); }
+  .ln.alert::after { content: "⚡"; position: absolute; right: 10px; top: 8px; color: var(--alert); text-shadow: 0 0 10px var(--alert); }
+  .ln .x mark { background: var(--alert); color: #000; padding: 0 4px; border-radius: 2px; box-shadow: 0 0 14px rgba(255,204,0,.5); }
+  .ln.hidden { display: none; }
+  .empty { color: var(--muted); text-align: center; margin-top: 16vh; font: 500 13px var(--mono); letter-spacing: .14em; text-transform: uppercase; }
+  .empty::before { content: ""; display: block; width: 90px; height: 90px; margin: 0 auto 22px; border-radius: 50%;
+    border: 1px solid var(--line2); box-shadow: 0 0 0 14px rgba(77,255,195,.03), 0 0 0 28px rgba(77,255,195,.02);
+    background: conic-gradient(from 0deg, rgba(77,255,195,.5), transparent 25%); animation: spin 3s linear infinite; }
+
+  /* ---------- tiroirs (entrée, alertes) et menu des voix */
+  .drawer { position: fixed; z-index: 30; top: 76px; right: 12px; width: min(440px, calc(100vw - 24px)); max-height: calc(100vh - 90px); overflow-y: auto;
+    padding: 16px; display: flex; flex-direction: column; gap: 12px; background: rgba(9,15,18,.95); box-shadow: 0 20px 60px rgba(0,0,0,.6);
+    animation: drop .2s ease-out; }
+  .drawer h3 { margin: 0; font: 700 12px var(--mono); letter-spacing: .2em; text-transform: uppercase; color: var(--ph); }
+  .drawer label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: var(--muted); }
+  select, input:not([type]), input[type=text], textarea { background: #03070a; color: var(--text); border: 1px solid var(--line2); border-radius: 3px;
+    padding: 8px 10px; font: 14px var(--sans); width: 100%; }
+  select:focus, input:focus, textarea:focus { outline: none; border-color: var(--ph); box-shadow: 0 0 0 3px var(--ph2); }
+  textarea { font: 13px/1.5 var(--mono); resize: vertical; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .grid2 { display: grid; grid-template-columns: 1fr 90px; gap: 10px; }
+  .bigvu { position: relative; display: block; height: 12px; background: #03070a; border: 1px solid var(--line2); }
+  .bigvu i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--ph) 70%, #ffe14d 85%, var(--tally)); box-shadow: 0 0 10px var(--ph2); }
+  .bigvu b { position: absolute; top: -4px; bottom: -4px; width: 2px; background: #fff; left: var(--thr, 25%); box-shadow: 0 0 6px #fff; }
+  #thr { width: 100%; margin: 4px 0 0; accent-color: var(--ph); }
+  #thrv { font: 600 12px var(--mono); color: var(--text); }
+  #astate { font-size: 12px; color: var(--muted); }
+  #astate.err { color: #ff8a80; }
+  label.chk { flex-direction: row !important; align-items: center; gap: 10px; color: var(--text) !important; font-size: 14px !important; }
+  label.chk input { width: 18px; height: 18px; accent-color: var(--ph); }
+  #astatus { font: 600 11px var(--mono); color: var(--ph); }
+
+  #menu { position: fixed; z-index: 40; width: 320px; padding: 12px; display: flex; flex-direction: column; gap: 6px;
+    background: rgba(9,15,18,.97); box-shadow: 0 16px 40px rgba(0,0,0,.6); animation: drop .15s ease-out; }
   #menu .mrow { display: flex; gap: 6px; }
-  #menu input { flex: 1; min-width: 0; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px;
-    padding: 6px 8px; font: inherit; font-size: 14px; }
-  #menu .mlab { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  #menu .mlab { margin-top: 6px; }
   #menu .mwrap { display: flex; flex-wrap: wrap; gap: 6px; }
-  #menu .mmerge { display: flex; align-items: center; gap: 6px; }
-  #menu .mmerge .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--c); }
-  #menu .mitem { text-align: left; background: transparent; padding: 7px 6px; }
-  #menu .mitem:hover { background: var(--line); }
-  #menu .danger { color: #ff8a80; }
-  #panel .thr { display: flex; flex-direction: column; gap: 4px; }
-  #panel .bigvu { position: relative; margin-bottom: 0; }
-  #panel .bigvu b, #live .vu b { position: absolute; top: -2px; bottom: -2px; width: 2px; background: #fff; left: var(--thr, 25%); }
-  #live .vu { position: relative; overflow: visible; }
-  #thr { width: 180px; margin: 0; accent-color: #fff; }
-  #thrv { font-variant-numeric: tabular-nums; color: var(--text); }
-  #apanel { background: var(--panel); border-bottom: 1px solid var(--line); padding: 12px 14px; display: flex;
-    flex-direction: column; gap: 10px; font-size: 13px; color: var(--muted); max-width: 760px; }
-  #apanel label { display: flex; flex-direction: column; gap: 4px; }
-  #apanel label.chk { flex-direction: row; align-items: center; gap: 8px; color: var(--text); font-size: 15px; }
-  #apanel input:not([type]), #apanel textarea { background: var(--bg); color: var(--text); border: 1px solid var(--line);
-    border-radius: 6px; padding: 7px 9px; font: inherit; font-size: 14px; }
-  #apanel .arow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-  #apanel[hidden] { display: none; }
-  #flash { position: fixed; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 50; }
+  #menu .mmerge { display: flex; align-items: center; gap: 6px; text-transform: none; letter-spacing: 0; font: 600 13px var(--sans); }
+  #menu .mmerge .dot { width: 8px; height: 8px; background: var(--c); box-shadow: 0 0 6px var(--c); }
+  #menu .mitem { text-align: left; border-color: transparent; text-transform: none; letter-spacing: 0; font: 500 13px var(--sans); padding: 8px; }
+  #menu .mitem:hover { border-color: var(--line2); color: var(--text); background: rgba(255,255,255,.03); }
+  [hidden] { display: none !important; }
+
+  #flash { position: fixed; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 100; }
   #flash.go { animation: flash 1.1s ease-out; }
+
   @keyframes flash { 0% { opacity: .95 } 11% { opacity: 0 } 22% { opacity: .95 } 33% { opacity: 0 } 44% { opacity: .9 } 100% { opacity: 0 } }
-  .hint { color: var(--muted); font-size: 12px; padding: 4px 14px; background: var(--panel); border-bottom: 1px solid var(--line); }
-  .empty { color: var(--muted); text-align: center; margin-top: 18vh; }
-  #status { font-size: 12px; }
-  @keyframes in { from { opacity: 0; transform: translateY(4px); } }
-  @media (max-width: 640px) { .ln { grid-template-columns: 1fr; gap: 0; } .ln .n { text-align: left; } }
+  @keyframes in { from { opacity: 0; transform: translateX(-10px); filter: blur(3px); } }
+  @keyframes drop { from { opacity: 0; transform: translateY(-6px); } }
+  @keyframes pulse { 50% { opacity: .35; } }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  ::-webkit-scrollbar { width: 8px; } ::-webkit-scrollbar-thumb { background: var(--line2); border-radius: 4px; } ::-webkit-scrollbar-track { background: transparent; }
+
+  @media (max-width: 900px) {
+    .tools .tx { display: none; }
+    .brand { min-width: 0; }
+  }
+  @media (max-width: 760px) {
+    body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto auto 1fr; grid-template-areas: "top" "banner" "rail" "main"; }
+    header { flex-wrap: wrap; } .brand { flex: 1; } .tools { flex-wrap: wrap; }
+    #live { order: 3; flex-basis: 100%; }
+    #rail { margin: 0 12px 8px; max-height: 30vh; }
+    #spks { flex-direction: row; flex-wrap: wrap; }
+    .spk { flex: 1 1 140px; }
+    .hint { display: none; }
+    main { margin: 0 12px 12px; }
+    .ln { grid-template-columns: 1fr; gap: 2px; }
+    .ln .n { text-align: left; }
+  }
 </style>
 </head>
 <body>
 <header>
-  <div id="live" hidden><span class="dot"></span>Com<span class="vu"><i></i><b></b></span></div>
-  <div id="spks" style="display:contents"></div>
-  <div class="tools">
-    <span id="status">connexion…</span>
-    <button id="alrt" title="Ce qui déclenche le flash blanc">⚡ Alertes</button>
-    <button id="gear" hidden title="Choisir la carte son et l'entrée">⚙ Entrée</button>
+  <div class="brand hud">
+    <b>INTERCOM<span>/</span>LIVE</b>
+    <div class="st" id="st"><i></i><span id="status">connexion…</span></div>
+  </div>
+  <div id="live" class="hud" hidden>
+    <div class="tally">COM</div>
+    <canvas id="scope" title="Niveau de la com sur 30 s. Le trait blanc est le seuil : glisse verticalement pour le régler."></canvas>
+    <div class="db"><b id="dbv">—</b>dBFS</div>
+    <span class="vu"><i></i><b></b></span>
+  </div>
+  <div class="tools hud">
+    <button id="alrt" title="Ce qui déclenche le flash blanc">⚡<span class="tx"> Alertes</span></button>
+    <button id="gear" hidden title="Choisir la carte son, l'entrée et le seuil">⚙<span class="tx"> Entrée</span></button>
     <button id="fsm" title="Texte plus petit">A−</button>
     <button id="fsp" title="Texte plus grand">A+</button>
-    <button id="snd" title="Bip sur mot-clé">🔔 Bip</button>
-    <button id="clr">Effacer</button>
-    <button id="logs" title="Ouvrir le dossier des transcriptions dans le Finder">📄 Transcriptions</button>
-    <button id="quit" title="Arrêter Intercom Live">Quitter</button>
+    <button id="snd" title="Bip sur mot-clé">🔔</button>
+    <button id="clr" title="Effacer l'écran (le fichier texte est gardé)">⌫</button>
+    <button id="logs" title="Ouvrir le dossier des transcriptions dans le Finder">📄</button>
+    <button id="quit" class="danger" title="Arrêter Intercom Live">⏻</button>
   </div>
 </header>
 <div id="banner" hidden></div>
-<div id="apanel" hidden>
+
+<aside id="rail" class="hud">
+  <div class="head"><span class="lab">Voix</span><span class="n" id="nvoices">0</span></div>
+  <div id="spks"></div>
+  <button id="purge" class="danger" title="Supprime toutes les « Voix N » jamais renommées. Les voix nommées et ignorées restent.">✕ Enlever les voix inconnues</button>
+  <div class="hint" id="hint" hidden>Clic sur une voix : renommer, fusionner, ignorer (retour antenne), supprimer.</div>
+</aside>
+
+<main class="hud">
+  <div class="head"><span class="lab">Transcription en direct</span><span id="clock">--:--:--</span></div>
+  <div id="log"><div class="empty">En attente de la com</div></div>
+</main>
+
+<div id="apanel" class="drawer hud" hidden>
+  <h3>⚡ Alertes</h3>
   <label class="chk"><input type="checkbox" id="aon"> Flash blanc sur tout l'écran quand ça me concerne</label>
-  <label>Mon prénom (et surnoms), séparés par des virgules — les fautes de transcription sont tolérées
-    <input id="anames" placeholder="Clément, Clem"></label>
+  <label>Mon prénom (et surnoms), séparés par des virgules. Les fautes de transcription sont tolérées.
+    <input id="anames" type="text" placeholder="Clément, Clem"></label>
   <label>Mots et expressions qui me concernent (un par ligne)
-    <textarea id="awords" rows="6"></textarea></label>
-  <div class="arow"><button id="atest">⚡ Tester le flash</button><button id="asave">Enregistrer</button><button id="aclose">Fermer</button><span id="astatus"></span></div>
+    <textarea id="awords" rows="9"></textarea></label>
+  <div class="row"><button id="atest">⚡ Tester le flash</button><button id="asave" class="on">Enregistrer</button><button id="aclose">Fermer</button><span id="astatus"></span></div>
 </div>
-<div id="flash"></div>
-<div id="panel" hidden>
-  <label>Carte son<select id="dev"></select></label>
-  <label>Entrée<select id="ch"></select></label>
-  <div class="thr"><label style="flex-direction:row;justify-content:space-between">Niveau / seuil <span id="thrv"></span></label>
+
+<div id="panel" class="drawer hud" hidden>
+  <h3>⚙ Entrée audio</h3>
+  <div class="grid2">
+    <label>Carte son<select id="dev"></select></label>
+    <label>Entrée<select id="ch"></select></label>
+  </div>
+  <label><span class="row" style="justify-content:space-between">Niveau et seuil <span id="thrv"></span></span>
     <span class="bigvu"><i></i><b></b></span>
-    <input id="thr" type="range" min="-60" max="0" step="1" title="Seuil : en dessous, rien n'est transcrit (monte-le pour ignorer le retour antenne)"></div>
-  <button id="refresh" title="Après avoir branché une carte">↻ Rafraîchir</button>
-  <button id="close">OK</button>
+    <input id="thr" type="range" min="-60" max="0" step="1" title="Seuil : en dessous, rien n'est transcrit (monte-le pour ignorer le retour antenne)"></label>
   <div id="astate"></div>
+  <div class="row"><button id="refresh" title="Après avoir branché une carte">↻ Rafraîchir</button><button id="close" class="on">OK</button></div>
 </div>
-<div class="hint" id="hint" hidden>Clic sur une voix pour la renommer (Réal, Scripte…), la fusionner avec une autre, l'ignorer (retour antenne) ou la supprimer. Seuil de niveau : ⚙ Entrée.</div>
-<div id="log"><div class="empty">En attente de la com…</div></div>
+
+<div id="flash"></div>
 <script>
 const $ = s => document.querySelector(s);
 const log = $('#log'), spks = $('#spks');
 let speakers = [], keywords = [], hidden = new Set(), beep = true, fs = 20, follow = true, mono = false;
+const counts = {};
 const root = i => { while (speakers[i] && speakers[i].alias != null) i = speakers[i].alias; return i; };
 try { fs = +localStorage.getItem('fs') || 20; beep = localStorage.getItem('beep') !== '0'; } catch (e) {}
 document.documentElement.style.setProperty('--fs', fs + 'px');
 $('#snd').classList.toggle('on', beep);
+setInterval(() => { $('#clock').textContent = new Date().toLocaleTimeString('fr-FR'); }, 500);
 
-const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const kwRe = () => keywords.length ? new RegExp('\\b(' + keywords.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')\\b', 'gi') : null;
 
 function renderSpeakers() {
-  spks.innerHTML = speakers.map((s, i) => (s.alias != null || s.deleted) ? '' :
-    `<div class="spk${hidden.has(i) ? ' off' : ''}${s.named ? '' : ' unnamed'}${s.ignored ? ' ign' : ''}" data-i="${i}" style="--c:${s.color}" title="${s.ignored ? 'Voix ignorée : ses phrases ne s\'affichent pas' : 'Clic : renommer, fusionner, ignorer, supprimer'}"><span class="dot"></span><span class="nm">${s.ignored ? '🚫 ' : ''}${esc(s.name)}</span>${mono ? '' : '<span class="vu"><i></i></span>'}</div>`).join('');
+  const live = speakers.map((s, i) => ({ s, i })).filter(({ s }) => s.alias == null && !s.deleted);
+  $('#nvoices').textContent = String(live.length).padStart(2, '0');
+  const unknown = live.filter(({ s }) => !s.named && !s.ignored).length;
+  $('#purge').hidden = !mono;
+  $('#purge').disabled = !unknown;
+  $('#purge').textContent = unknown ? `✕ Enlever ${unknown} inconnue${unknown > 1 ? "s" : ""}` : '✕ Aucune voix inconnue';
+  delete $('#purge').dataset.sure;
+  spks.innerHTML = live.map(({ s, i }) => {
+    const n = speakers.reduce((a, o, j) => a + (root(j) === i ? (counts[j] || 0) : 0), 0);
+    const sub = s.ignored ? 'IGNORÉE' : s.named ? 'CONNUE' : 'INCONNUE';
+    return `<div class="spk${hidden.has(i) ? ' off' : ''}${s.named ? '' : ' unnamed'}${s.ignored ? ' ign' : ''}" data-i="${i}" style="--c:${s.color}" title="${s.ignored ? 'Voix ignorée : ses phrases ne s\'affichent pas' : 'Clic : renommer, fusionner, ignorer, supprimer'}">
+      <span class="dot"></span><span><span class="nm">${s.ignored ? '🚫 ' : ''}${esc(s.name)}</span><span class="sub">${sub}</span></span>
+      <span class="cnt">${String(n).padStart(3, '0')}</span>${mono ? '' : '<span class="vu"><i></i></span>'}</div>`;
+  }).join('');
   spks.querySelectorAll('.spk').forEach(el => {
     const i = +el.dataset.i;
-    el.onclick = e => {
-      e.stopPropagation();
-      if (!mono) { toggleHide(i); return; }
-      openMenu(i, el);
-    };
+    el.onclick = e => { e.stopPropagation(); if (!mono) { toggleHide(i); return; } openMenu(i, el); };
   });
 }
+$('#purge').onclick = async () => {
+  const b = $('#purge');
+  if (!b.dataset.sure) { b.dataset.sure = 1; b.textContent = '✕ Sûr ? Clique encore'; setTimeout(renderSpeakers, 3500); return; }
+  b.textContent = '…';
+  await fetch('/purge-voices', { method: 'POST', body: '{}' });
+};
 
-function toggleHide(i) {
-  hidden.has(i) ? hidden.delete(i) : hidden.add(i);
-  renderSpeakers(); refreshLines();
-}
+function toggleHide(i) { hidden.has(i) ? hidden.delete(i) : hidden.add(i); renderSpeakers(); refreshLines(); }
 
 const voiceAct = body => fetch('/voice', { method: 'POST', body: JSON.stringify(body) });
-const menu = document.createElement('div'); menu.id = 'menu'; menu.hidden = true; document.body.appendChild(menu);
+const menu = document.createElement('div'); menu.id = 'menu'; menu.className = 'hud'; menu.hidden = true; document.body.appendChild(menu);
 document.addEventListener('click', e => { if (!menu.contains(e.target)) menu.hidden = true; });
-document.addEventListener('keydown', e => { if (e.key === 'Escape') menu.hidden = true; });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { menu.hidden = true; $('#panel').hidden = true; $('#apanel').hidden = true; } });
 
 function openMenu(i, el) {
   const s = speakers[i];
   const others = speakers.map((o, j) => ({ o, j })).filter(({ o, j }) => j !== i && o.alias == null && !o.deleted);
   menu.innerHTML = `
-    <div class="mrow"><input id="mname" value="${esc(s.name)}" maxlength="40"><button id="mok">Renommer</button></div>
-    ${others.length ? `<div class="mlab">C'est la même personne que…</div><div class="mwrap">${others.map(({ o, j }) =>
+    <div class="lab">Voix</div>
+    <div class="mrow"><input id="mname" type="text" value="${esc(s.name)}" maxlength="40"><button id="mok" class="on">OK</button></div>
+    ${others.length ? `<div class="lab mlab">C'est la même personne que…</div><div class="mwrap">${others.map(({ o, j }) =>
       `<button class="mmerge" data-j="${j}" style="--c:${o.color}"><span class="dot"></span>${esc(o.name)}</button>`).join('')}</div>` : ''}
+    <div class="lab mlab">Actions</div>
     <button class="mitem" id="mhide">${hidden.has(i) ? '👁 Réafficher ses phrases' : '🙈 Masquer ses phrases (pour cette fois)'}</button>
-    <button class="mitem" id="mign">${s.ignored ? '✅ Ne plus ignorer cette voix' : '🚫 Ignorer cette voix (retour antenne, plateau…) — retenu'}</button>
+    <button class="mitem" id="mign">${s.ignored ? '✅ Ne plus ignorer cette voix' : '🚫 Ignorer cette voix (retour antenne, plateau…), retenu'}</button>
     <button class="mitem danger" id="mdel">🗑 Supprimer cette voix</button>`;
   const r = el.getBoundingClientRect();
-  menu.style.left = Math.min(r.left, innerWidth - 330) + 'px'; menu.style.top = (r.bottom + 6) + 'px';
+  menu.style.left = Math.min(r.right + 8, innerWidth - 330) + 'px';
+  menu.style.top = Math.max(8, Math.min(r.top, innerHeight - 320)) + 'px';
   menu.hidden = false;
   const inp = menu.querySelector('#mname');
   inp.focus(); inp.select();
@@ -203,11 +329,20 @@ function refreshLines() {
     if (!sp) return;
     l.style.setProperty('--c', sp.color);
     l.querySelector('.n').textContent = sp.name;
-    l.classList.toggle('hidden', hidden.has(r) || !!sp.ignored);
+    l.classList.toggle('hidden', hidden.has(r) || !!sp.ignored || !!sp.deleted);
   });
 }
 
-function addLine(ev) {
+const tallyTimers = {};
+function tally(i) {   // en mono : la voix qui vient de parler s'allume quelques secondes
+  const el = spks.querySelector(`[data-i="${i}"]`);
+  if (!el) return;
+  el.classList.add('talking');
+  clearTimeout(tallyTimers[i]);
+  tallyTimers[i] = setTimeout(() => spks.querySelector(`[data-i="${i}"]`)?.classList.remove('talking'), 2500);
+}
+
+function addLine(ev, live) {
   const e = log.querySelector('.empty'); if (e) e.remove();
   const re = kwRe();
   let html = esc(ev.text);
@@ -215,9 +350,10 @@ function addLine(ev) {
     const hre = new RegExp('(' + ev.hits.map(h => esc(h).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')', 'g');
     html = html.replace(hre, '<mark>$1</mark>');
   } else if (re) html = html.replace(re, '<mark>$1</mark>');
+  counts[ev.speaker] = (counts[ev.speaker] || 0) + 1;
   const d = document.createElement('div');
   const r = root(ev.speaker), sp = speakers[r] || { name: '?', color: '#888' };
-  d.className = 'ln' + (ev.alert ? ' alert' : '') + (hidden.has(r) ? ' hidden' : '');
+  d.className = 'ln' + (ev.alert ? ' alert' : '') + (hidden.has(r) || sp.ignored || sp.deleted ? ' hidden' : '');
   d.dataset.s = ev.speaker;
   d.style.setProperty('--c', sp.color);
   d.title = `latence ${ev.latency}s`;
@@ -225,6 +361,9 @@ function addLine(ev) {
   log.appendChild(d);
   while (log.children.length > 600) log.firstChild.remove();
   if (follow) log.scrollTop = log.scrollHeight;
+  const c = spks.querySelector(`[data-i="${r}"] .cnt`);
+  if (c) c.textContent = String(+c.textContent + 1).padStart(3, '0');
+  if (live && mono) tally(r);
 }
 
 let actx;
@@ -239,35 +378,72 @@ function ding() {
   } catch (e) {}
 }
 
-log.addEventListener('scroll', () => { follow = log.scrollHeight - log.scrollTop - log.clientHeight < 60; });
+log.addEventListener('scroll', () => { follow = log.scrollHeight - log.scrollTop - log.clientHeight < 80; });
 $('#fsp').onclick = () => setFs(fs + 2);
 $('#fsm').onclick = () => setFs(Math.max(12, fs - 2));
 function setFs(v) { fs = v; document.documentElement.style.setProperty('--fs', fs + 'px'); try { localStorage.setItem('fs', fs); } catch (e) {} }
 $('#snd').onclick = () => { beep = !beep; $('#snd').classList.toggle('on', beep); try { localStorage.setItem('beep', beep ? '1' : '0'); } catch (e) {} };
-$('#clr').onclick = () => { log.innerHTML = ''; };
+$('#clr').onclick = () => { log.innerHTML = '<div class="empty">En attente de la com</div>'; };
 $('#logs').onclick = () => fetch('/open-transcripts', { method: 'POST', body: '{}' });
 $('#quit').onclick = async () => {
   const b = $('#quit');
-  if (!b.dataset.sure) { b.dataset.sure = 1; b.textContent = 'Sûr ?'; setTimeout(() => { delete b.dataset.sure; b.textContent = 'Quitter'; }, 3000); return; }
+  if (!b.dataset.sure) { b.dataset.sure = 1; b.textContent = 'Quitter ?'; setTimeout(() => { delete b.dataset.sure; b.textContent = '⏻'; }, 3000); return; }
   try { await fetch('/quit', { method: 'POST', body: '{}' }); } catch (e) {}
-  document.body.innerHTML = '<div class="empty">Intercom Live est arrêté. Tu peux fermer cette fenêtre.</div>';
+  document.body.innerHTML = '<div class="empty" style="grid-column:1/-1">Intercom Live est arrêté. Tu peux fermer cette fenêtre.</div>';
   setTimeout(() => window.close(), 800);
 };
+
+// ---- oscilloscope de la com (30 s), seuil réglable en glissant
+const scope = $('#scope'), sctx = scope.getContext('2d'), hist = new Array(300).fill(-90);
+let thrDb = -45, talkingNow = false;
+function drawScope() {
+  const dpr = devicePixelRatio || 1, w = scope.clientWidth, h = scope.clientHeight;
+  if (!w) return;
+  if (scope.width !== w * dpr) { scope.width = w * dpr; scope.height = h * dpr; }
+  sctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  sctx.clearRect(0, 0, w, h);
+  const y = db => h - Math.max(0, Math.min(1, (db + 60) / 60)) * h;
+  sctx.strokeStyle = 'rgba(77,255,195,.07)'; sctx.lineWidth = 1;
+  for (let d = -50; d < 0; d += 10) { sctx.beginPath(); sctx.moveTo(0, y(d) + .5); sctx.lineTo(w, y(d) + .5); sctx.stroke(); }
+  const bw = w / hist.length;
+  hist.forEach((db, k) => {
+    const top = y(db), above = db >= thrDb, age = k / hist.length;
+    sctx.fillStyle = above ? `rgba(77,255,195,${.25 + .75 * age})` : `rgba(111,138,143,${.12 + .4 * age})`;
+    sctx.fillRect(k * bw, top, Math.max(1, bw - .6), h - top);
+  });
+  const ty = y(thrDb);
+  sctx.setLineDash([4, 4]); sctx.strokeStyle = '#fff'; sctx.lineWidth = 1.2;
+  sctx.beginPath(); sctx.moveTo(0, ty); sctx.lineTo(w, ty); sctx.stroke(); sctx.setLineDash([]);
+  sctx.fillStyle = '#fff'; sctx.font = '600 9px ui-monospace, Menlo, monospace';
+  sctx.fillText('SEUIL ' + Math.round(thrDb), 4, Math.max(10, ty - 3));
+}
+new ResizeObserver(drawScope).observe(scope);
+let dragging = false;
+const setFromY = ev => {
+  const r = scope.getBoundingClientRect();
+  const db = Math.round(Math.max(-60, Math.min(0, (1 - (ev.clientY - r.top) / r.height) * 60 - 60)));
+  showThr(db); sendThr();
+};
+scope.addEventListener('pointerdown', e => { dragging = true; scope.setPointerCapture(e.pointerId); setFromY(e); });
+scope.addEventListener('pointermove', e => dragging && setFromY(e));
+scope.addEventListener('pointerup', () => dragging = false);
 
 // ---- choix de l'entrée audio
 let devs = [], audio = null;
 function setVU(db) {
+  hist.push(db); hist.shift(); drawScope();
+  $('#dbv').textContent = db > -90 ? Math.round(db) : '—';
   const w = Math.max(0, Math.min(100, (db + 60) / 60 * 100)) + '%';
-  document.querySelectorAll('#live .vu i, #panel .bigvu i').forEach(b => b.style.width = w);
+  document.querySelectorAll('#panel .bigvu i').forEach(b => b.style.width = w);
 }
 function showAudio(a) {
   audio = a;
   const st = $('#astate'), cur = a && a.current;
   st.classList.toggle('err', !!(a && a.error));
   st.textContent = a && a.error ? a.error
-    : cur ? `Écoute : ${cur.name}${cur.channel ? ' — entrée ' + cur.channel : ''} (${cur.samplerate / 1000} kHz).` + (a.saved ? ' Choix retenu pour la prochaine fois.' : ' Choisis la carte et l\'entrée où arrive la com, et vérifie que le niveau bouge quand ça parle.')
+    : cur ? `Écoute : ${cur.name}${cur.channel ? ', entrée ' + cur.channel : ''} (${cur.samplerate / 1000} kHz).` + (a.saved ? ' Choix retenu pour la prochaine fois.' : ' Choisis la carte et l\'entrée où arrive la com, et vérifie que le niveau bouge quand ça parle.')
     : 'Aucune entrée ouverte.';
-  if (a && (a.error || !a.saved)) $('#panel').hidden = false;  // 1er lancement ou souci : on montre le choix
+  if (a && (a.error || !a.saved)) $('#panel').hidden = false;
   if (cur && devs.length) { $('#dev').value = cur.device; fillChannels(cur.channel); }
 }
 function fillChannels(sel) {
@@ -287,7 +463,7 @@ async function loadDevices(refresh) {
     clearTimeout(to);
   } catch (e) {
     $('#panel').hidden = false; st.classList.add('err');
-    st.textContent = "Le logiciel ne répond pas à la demande de liste des cartes son (" + e.name + "). Regarde la fenêtre Terminal et envoie son contenu.";
+    st.textContent = "Le logiciel ne répond pas à la demande de liste des cartes son (" + e.name + ").";
     return;
   }
   devs = r.devices || [];
@@ -297,7 +473,7 @@ async function loadDevices(refresh) {
   showAudio(r);
   if (!devs.length) {
     $('#panel').hidden = false; st.classList.add('err');
-    st.textContent = "Aucune carte son vue par le logiciel. Autorise « Intercom Live » (ou Terminal) dans Réglages Système > Confidentialité et sécurité > Micro, puis relance l'app. Détail : " + (r.diag || '?');
+    st.textContent = "Aucune carte son vue par le logiciel. Autorise « Intercom Live » dans Réglages Système > Confidentialité et sécurité > Micro, puis relance l'app. Détail : " + (r.diag || '?');
   }
 }
 async function applyAudio() {
@@ -309,17 +485,20 @@ $('#dev').onchange = () => { fillChannels(1); applyAudio(); };
 $('#ch').onchange = applyAudio;
 $('#refresh').onclick = () => loadDevices(true);
 $('#close').onclick = () => $('#panel').hidden = true;
-$('#gear').onclick = () => { $('#panel').hidden = !$('#panel').hidden; if (!$('#panel').hidden) loadDevices(); };
+$('#gear').onclick = e => { e.stopPropagation(); $('#apanel').hidden = true; $('#panel').hidden = !$('#panel').hidden; if (!$('#panel').hidden) loadDevices(); };
 let thrTimer;
 function showThr(db) {
+  thrDb = db;
   $('#thr').value = db; $('#thrv').textContent = Math.round(db) + ' dB';
   document.documentElement.style.setProperty('--thr', ((db + 60) / 60 * 100) + '%');
+  drawScope();
 }
-$('#thr').oninput = () => {
-  showThr(+$('#thr').value);
+function sendThr() {
   clearTimeout(thrTimer);
-  thrTimer = setTimeout(() => fetch('/vad', { method: 'POST', body: JSON.stringify({ threshold_db: +$('#thr').value }) }), 250);
-};
+  thrTimer = setTimeout(() => fetch('/vad', { method: 'POST', body: JSON.stringify({ threshold_db: thrDb }) }), 250);
+}
+$('#thr').oninput = () => { showThr(+$('#thr').value); sendThr(); };
+
 // ---- alertes « ça me concerne »
 let alerte = { actif: true, prenoms: [], mots: [] };
 function pageFlash() {
@@ -329,48 +508,45 @@ function pageFlash() {
 function fillAlerte() {
   $('#aon').checked = alerte.actif; $('#anames').value = alerte.prenoms.join(', '); $('#awords').value = alerte.mots.join('\n');
 }
-$('#alrt').onclick = () => { $('#apanel').hidden = !$('#apanel').hidden; fillAlerte(); $('#astatus').textContent = ''; };
+$('#alrt').onclick = () => { $('#panel').hidden = true; $('#apanel').hidden = !$('#apanel').hidden; fillAlerte(); $('#astatus').textContent = ''; };
 $('#aclose').onclick = () => $('#apanel').hidden = true;
 $('#asave').onclick = async () => {
   alerte = { actif: $('#aon').checked,
     prenoms: $('#anames').value.split(',').map(x => x.trim()).filter(Boolean),
     mots: $('#awords').value.split(/\n|,/).map(x => x.trim()).filter(Boolean) };
   await fetch('/alerte', { method: 'POST', body: JSON.stringify(alerte) });
-  $('#astatus').textContent = '✓ Enregistré';
+  $('#astatus').textContent = '✓ ENREGISTRÉ';
 };
 $('#aon').onchange = () => $('#asave').click();
 $('#atest').onclick = () => fetch('/flash-test', { method: 'POST', body: '{}' });
 
 function showStatus(t) { $('#banner').hidden = !t; $('#banner').textContent = t || ''; }
+function setOnline(ok, txt) { $('#st').classList.toggle('ok', ok); $('#status').textContent = txt; }
 
 if (location.protocol === 'file:') {
-  log.innerHTML = '<div class="empty">Cette page s\'ouvre via le logiciel, pas en double-cliquant sur le fichier.<br>Lance <b>lancer.command</b> : la bonne fenêtre s\'ouvrira toute seule.</div>';
+  log.innerHTML = '<div class="empty">Cette page s\'ouvre via le logiciel, pas en double-cliquant sur le fichier.</div>';
 }
 fetch('/config').then(r => r.json()).then(c => {
   speakers = c.speakers; keywords = c.keywords; mono = c.mode === 'mono';
   if (c.alerte) alerte = c.alerte;
   $('#live').hidden = !mono; $('#hint').hidden = !mono;
+  c.history.forEach(ev => addLine(ev, false));
   renderSpeakers();
-  c.history.forEach(addLine);
   showStatus(c.status);
   showThr(c.threshold_db);
   if (c.live) { $('#gear').hidden = false; loadDevices(); }
   const es = new EventSource('/events');
   let lost = false;
-  es.onopen = () => { if (lost) location.reload(); $('#status').textContent = 'en direct'; };  // le logiciel a redémarré
-  es.onerror = () => { lost = true; $('#status').textContent = 'reconnexion…'; };
+  es.onopen = () => { if (lost) location.reload(); setOnline(true, 'en direct'); };
+  es.onerror = () => { lost = true; setOnline(false, 'reconnexion…'); };
   es.onmessage = m => {
     const ev = JSON.parse(m.data);
-    if (ev.type === 'line') { addLine(ev); if (ev.alert) { ding(); pageFlash(); } }
+    if (ev.type === 'line') { addLine(ev, true); if (ev.alert) { ding(); pageFlash(); } }
     else if (ev.type === 'flash') { const a = alerte.actif; alerte.actif = true; pageFlash(); alerte.actif = a; }
-    else if (ev.type === 'speakers') {
-      speakers = ev.speakers;
-      if (!spks.querySelector('[contenteditable="true"]')) renderSpeakers();
-      refreshLines();
-    }
+    else if (ev.type === 'speakers') { speakers = ev.speakers; renderSpeakers(); refreshLines(); }
     else if (ev.type === 'audio') showAudio(ev);
     else if (ev.type === 'status') showStatus(ev.text);
-    else if (ev.type === 'vad') showThr(ev.threshold_db);
+    else if (ev.type === 'vad') { if (!dragging) showThr(ev.threshold_db); }
     else if (ev.type === 'reload') location.reload();
     else if (ev.type === 'restarting') showStatus('↻ Mise à jour installée, redémarrage (quelques secondes)…');
     else if (ev.type === 'levels' && mono) setVU(ev.db[0] ?? -120);
