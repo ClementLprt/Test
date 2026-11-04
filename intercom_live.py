@@ -904,6 +904,80 @@ def open_window(url: str):
     webbrowser.open(url)
 
 
+APP_MODE = False   # lancé depuis l'icône (pas de Terminal) : les redémarrages se font sans lancer.command
+
+
+def native_window_available() -> bool:
+    if sys.platform != "darwin" or os.environ.get("INTERCOM_LIVE_NO_GUI"):
+        return False
+    try:
+        import webview  # noqa: F401 (pywebview : fenêtre Mac native, WebKit comme Safari)
+        return True
+    except Exception as e:
+        print(f"[fenêtre] fenêtre native indisponible ({e!r}), j'utilise le navigateur.", flush=True)
+        return False
+
+
+def run_native_window(url: str):
+    import webview
+    try:  # nom « Intercom Live » dans la barre de menus et le Dock (sinon « Python »)
+        from Foundation import NSBundle
+        info = NSBundle.mainBundle().infoDictionary()
+        info["CFBundleName"] = "Intercom Live"
+        info["CFBundleDisplayName"] = "Intercom Live"
+    except Exception:
+        pass
+
+    def set_icon():
+        try:
+            from AppKit import NSApplication, NSImage
+            icns = APP_BUNDLE / "Contents" / "Resources" / "icon.icns"
+            if icns.exists():
+                NSApplication.sharedApplication().setApplicationIconImage_(
+                    NSImage.alloc().initWithContentsOfFile_(str(icns)))
+        except Exception:
+            pass
+
+    webview.create_window("Intercom Live", url, width=1100, height=750, min_size=(640, 420),
+                          background_color="#0e1013", text_select=True)
+    webview.start(set_icon)
+
+
+def ensure_requirements():
+    """Installe les modules ajoutés par une mise à jour (utilisé quand l'app se relance elle-même)."""
+    import hashlib
+    import subprocess
+    req = HERE / "requirements.txt"
+    stamp = HERE / ".venv" / ".req_hash"
+    h = hashlib.sha1(req.read_bytes()).hexdigest()
+    if stamp.exists() and stamp.read_text().strip() == h:
+        return
+    print("[maj] installation des nouveaux modules…", flush=True)
+    py = sys.executable
+    if subprocess.run([py, "-m", "pip", "--version"], capture_output=True).returncode == 0:
+        cmd = [py, "-m", "pip", "install", "-r", str(req)]
+    else:
+        uv = shutil_which("uv") or str(Path.home() / ".local" / "bin" / "uv")
+        cmd = [uv, "pip", "install", "--python", py, "-r", str(req)]
+    if subprocess.run(cmd).returncode == 0:
+        stamp.write_text(h)
+
+
+def shutil_which(name):
+    import shutil
+    return shutil.which(name)
+
+
+def restart_self():
+    if APP_MODE:   # même processus (l'app garde son icône et son accès au micro)
+        try:
+            ensure_requirements()
+        except Exception as e:
+            print(f"[maj] modules : {e!r}", flush=True)
+        os.execv(sys.executable, [sys.executable, "-u", str(HERE / "intercom_live.py")] + sys.argv[1:])
+    os._exit(RESTART_CODE)   # lancé depuis le Terminal : lancer.command relance
+
+
 def already_running(port: int) -> bool:
     try:
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/config", timeout=1.5) as r:
@@ -1095,7 +1169,7 @@ def watch_for_updates(bus: "EventBus"):
                 print("[maj] nouvelle version, redémarrage…", flush=True)
                 bus.publish({"type": "restarting"})
                 time.sleep(0.5)
-                os._exit(RESTART_CODE)
+                restart_self()
         except Exception as e:
             print(f"[maj] {e!r}", flush=True)
 
@@ -1114,6 +1188,8 @@ def main():
     ap.add_argument("--install-app", action="store_true", help="crée l'app Mac dans ~/Applications")
     a = ap.parse_args()
 
+    global APP_MODE
+    APP_MODE = a.app
     if a.install_app:
         _migrate_old_data()
         if not relocate_out_of_documents():
@@ -1130,7 +1206,10 @@ def main():
     port = Config.load(Path(a.config)).port
     if already_running(port):   # déjà ouvert (ex. 2e clic sur l'icône) : on montre juste la fenêtre
         print("Intercom Live tourne déjà : j'ouvre la fenêtre.", flush=True)
-        if not a.no_browser:
+        if sys.platform == "darwin" and APP_BUNDLE.exists():
+            import subprocess
+            subprocess.run(["open", str(APP_BUNDLE)])
+        elif not a.no_browser:
             open_window(f"http://127.0.0.1:{port}")
         return
 
@@ -1153,45 +1232,57 @@ def main():
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     url = f"http://127.0.0.1:{cfg.port}"
     print(f"[ui] {url}   (journal : {eng.log_path})", flush=True)
-    if cfg.open_browser and not a.no_browser:
-        open_window(url)
+    use_gui = cfg.open_browser and native_window_available()
     threading.Thread(target=watch_for_updates, args=(bus,), daemon=True).start()
     if cfg.update_repo and not a.file:
         threading.Thread(target=auto_update, args=(cfg.update_repo,), daemon=True).start()
 
-    if live:
-        try:
-            devs = live.devices()
-            print(f"[audio] {len(devs)} carte(s) son avec entrée : " + (", ".join(d["name"] for d in devs) or "AUCUNE"), flush=True)
-            if not devs:
-                print(f"[audio] diagnostic : {live.diag()}", flush=True)
-        except Exception as e:
-            print(f"[audio] impossible de lister les cartes son : {e!r}", flush=True)
-        threading.Thread(target=live.run, daemon=True).start()
+    def boot():
+        if live:
+            try:
+                devs = live.devices()
+                print(f"[audio] {len(devs)} carte(s) son avec entrée : " + (", ".join(d["name"] for d in devs) or "AUCUNE"), flush=True)
+                if not devs:
+                    print(f"[audio] diagnostic : {live.diag()}", flush=True)
+            except Exception as e:
+                print(f"[audio] impossible de lister les cartes son : {e!r}", flush=True)
+            threading.Thread(target=live.run, daemon=True).start()
 
-    # Chargement des modèles une fois la fenêtre ouverte (le 1er lancement télécharge ~1,5 Go).
-    if cfg.mode == "mono":
-        bus.set_status("Chargement de la reconnaissance des voix…")
-    try:
+        # Chargement des modèles une fois la fenêtre ouverte (le 1er lancement télécharge ~1,5 Go).
         if cfg.mode == "mono":
-            eng.voices = VoiceBook(cfg)
-        bus.set_status("Chargement de Whisper (le premier lancement télécharge le modèle, quelques minutes)…")
-        asr = Transcriber(cfg, fake=a.fake_asr)
-        asr.warmup()
-        eng.asr = asr
-        bus.set_status("")
-        threading.Thread(target=eng.asr_loop, daemon=True).start()
-    except Exception as e:
-        # On garde la fenêtre et l'audio en vie pour pouvoir lire l'erreur et régler l'entrée.
-        import traceback
-        traceback.print_exc()
-        eng.asr = None
-        bus.set_status(f"⚠ Erreur au chargement des modèles : {e!r}. Le détail est dans la fenêtre Terminal "
-                       f"et dans dernier_lancement.log (dossier de l'app).")
+            bus.set_status("Chargement de la reconnaissance des voix…")
+        try:
+            if cfg.mode == "mono":
+                eng.voices = VoiceBook(cfg)
+            bus.set_status("Chargement de Whisper (le premier lancement télécharge le modèle, quelques minutes)…")
+            asr = Transcriber(cfg, fake=a.fake_asr)
+            asr.warmup()
+            eng.asr = asr
+            bus.set_status("")
+            threading.Thread(target=eng.asr_loop, daemon=True).start()
+        except Exception as e:
+            # On garde la fenêtre et l'audio en vie pour pouvoir lire l'erreur et régler l'entrée.
+            import traceback
+            traceback.print_exc()
+            eng.asr = None
+            bus.set_status(f"⚠ Erreur au chargement des modèles : {e!r}. Le détail est dans la fenêtre Terminal "
+                           f"et dans dernier_lancement.log (dossier de l'app).")
 
-    if not a.app and not a.file:   # ancienne installation dans Documents → on répare l'app du Dock
-        threading.Thread(target=relocate_out_of_documents, args=(bus,), daemon=True).start()
+        if not a.app and not a.file:   # ancienne installation dans Documents → on répare l'app du Dock
+            threading.Thread(target=relocate_out_of_documents, args=(bus,), daemon=True).start()
 
+    boot_thread = threading.Thread(target=boot, daemon=True)
+    if use_gui:
+        # Vraie fenêtre Mac : l'interface Cocoa doit tourner sur le fil principal, le reste en arrière-plan.
+        boot_thread.start()
+        if a.file:
+            threading.Thread(target=run_file, args=(cfg, eng, a.file, a.speed), daemon=True).start()
+        run_native_window(url)
+        print("Fenêtre fermée : arrêt.", flush=True)
+        os._exit(0)
+    if cfg.open_browser and not a.no_browser:
+        open_window(url)
+    boot()
     try:
         if a.file:
             run_file(cfg, eng, a.file, a.speed)

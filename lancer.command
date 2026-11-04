@@ -87,7 +87,17 @@ if [ $APPMODE = 0 ] && [ "$(uname)" = "Darwin" ] && [ "$1" != "--console" ] && [
 fi
 [ "$1" = "--console" ] && shift
 
-trap 'kill $(jobs -p) 2>/dev/null; exit 0' TERM INT   # « Quitter » depuis le Dock arrête aussi le logiciel
+# Lancé depuis l'icône : on remplace ce script par le logiciel lui-même (même processus = une seule icône dans
+# le Dock, et l'accès au micro est demandé au nom d'« Intercom Live »). Il gère lui-même ses redémarrages.
+if [ $APPMODE = 1 ]; then
+  if [ "$(shasum requirements.txt | cut -d' ' -f1)" != "$(cat .venv/.req_hash 2>/dev/null)" ]; then
+    notify "Mise à jour des modules…"
+    pip_install && shasum requirements.txt | cut -d' ' -f1 > .venv/.req_hash
+  fi
+  exec .venv/bin/python -u intercom_live.py --app "$@"
+fi
+
+trap 'kill $(jobs -p) 2>/dev/null; exit 0' TERM INT
 EXTRA=""
 
 # 2. Boucle : le logiciel se relance tout seul quand son code est mis à jour (code de sortie 42).
@@ -97,14 +107,8 @@ while true; do
     echo "Mise à jour des modules…"
     pip_install && shasum requirements.txt | cut -d' ' -f1 > .venv/.req_hash
   fi
-  if [ $APPMODE = 1 ]; then
-    .venv/bin/python -u intercom_live.py --app $EXTRA "$@" &
-    wait $!
-    code=$?
-  else
-    .venv/bin/python -u intercom_live.py $EXTRA "$@" 2>&1 | tee dernier_lancement.log
-    code=${PIPESTATUS[0]}
-  fi
+  .venv/bin/python -u intercom_live.py $EXTRA "$@" 2>&1 | tee dernier_lancement.log
+  code=${PIPESTATUS[0]}
   [ "$code" = "42" ] && { echo "↻ Mise à jour détectée, redémarrage…"; EXTRA="--no-browser"; sleep 1; continue; }
   break
 done

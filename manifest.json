@@ -1,10 +1,10 @@
 {
- "version": "1.2",
+ "version": "1.3",
  "commit": "main",
  "files": {
-  "intercom_live.py": "8f268fdc1a0a2c90ce5921bc029c14f7e3511f8207d3c20fee8d9b288719ac4f",
-  "requirements.txt": "c75ef704f7c817e60c551455741cfc31527c1df665ae71c24c98c08c7202a30f",
-  "lancer.command": "8a6325b68643d93406983b348e79065e0b2c0f27f4762ccbcac08b1a4accb20e",
+  "intercom_live.py": "2700d4b1c6dc7ff6b1d10d0c0f3161d7108c7ece5d5f47183c678986361508b5",
+  "requirements.txt": "599cdcd8e0fcdad0cfe831cfa8c51c7feccfadc27e519665a9f581da012987e9",
+  "lancer.command": "d29581aa98eb6404ff3becb56a5b25e8851330933768122de843f65c62ecd699",
   "config.toml": "967783eb440ea86b9d453e961a1cc78b85e215ca493775481d44953925237928",
   "web/index.html": "7ea5fa5758c15ffd9305cfd86a22d1440612c59c274e5f44124aec3992c6086c"
  }
