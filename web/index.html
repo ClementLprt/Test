@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Intercom Live</title>
+<style>
+  :root {
+    --bg: #0e1013; --panel: #171a1f; --line: #232831; --text: #e8eaed; --muted: #8a919c;
+    --alert: #ffb300; --alert-bg: rgba(255,179,0,.12);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 16px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif; }
+  body { display: flex; flex-direction: column; }
+  header { display: flex; gap: 8px; align-items: center; padding: 10px 14px; background: var(--panel);
+    border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .spk { display: flex; align-items: center; gap: 8px; padding: 6px 10px 6px 8px; border-radius: 8px;
+    border: 1px solid var(--line); cursor: pointer; user-select: none; min-width: 120px; transition: .12s; }
+  .spk.off { opacity: .35; }
+  .spk .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--c); opacity: .25; transition: .08s; }
+  .spk.talking { border-color: var(--c); box-shadow: 0 0 0 1px var(--c) inset; }
+  .spk.talking .dot { opacity: 1; box-shadow: 0 0 10px var(--c); }
+  .spk .nm { font-weight: 600; font-size: 14px; }
+  .vu { width: 46px; height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; margin-left: auto; }
+  .vu i { display: block; height: 100%; width: 0; background: var(--c); }
+  .tools { margin-left: auto; display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 13px; }
+  button { background: var(--line); color: var(--text); border: 0; border-radius: 6px; padding: 6px 10px;
+    font: inherit; font-size: 13px; cursor: pointer; }
+  button.on { background: #2e7d32; }
+  #log { flex: 1; overflow-y: auto; padding: 10px 14px 40px; }
+  .ln { display: grid; grid-template-columns: 64px 130px 1fr; gap: 10px; padding: 7px 8px; border-radius: 6px;
+    align-items: baseline; animation: in .25s ease-out; }
+  .ln + .ln { border-top: 1px solid var(--line); }
+  .ln .t { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 13px; }
+  .ln .n { font-weight: 700; color: var(--c); text-align: right; }
+  .ln .x { font-size: var(--fs, 20px); }
+  .ln.alert { background: var(--alert-bg); box-shadow: inset 3px 0 0 var(--alert); }
+  .ln.alert .x mark { background: var(--alert); color: #000; padding: 0 3px; border-radius: 3px; }
+  .ln.hidden { display: none; }
+  .spk .nm[contenteditable="true"] { outline: 1px dashed var(--muted); padding: 0 4px; border-radius: 3px; }
+  .spk.unnamed .nm { font-style: italic; }
+  #live { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line);
+    font-size: 13px; color: var(--muted); }
+  #live .dot { width: 10px; height: 10px; border-radius: 50%; background: #e53935; opacity: .2; transition: .08s; }
+  #live.on .dot { opacity: 1; box-shadow: 0 0 10px #e53935; }
+  #live.on { color: var(--text); }
+  #live .vu { width: 60px; }
+  #live .vu i { background: #e53935; }
+  #panel { background: var(--panel); border-bottom: 1px solid var(--line); padding: 12px 14px; display: flex; gap: 14px;
+    align-items: end; flex-wrap: wrap; font-size: 14px; }
+  #panel label { display: flex; flex-direction: column; gap: 4px; color: var(--muted); font-size: 12px; }
+  #panel select { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px;
+    padding: 6px 8px; font: inherit; font-size: 14px; min-width: 120px; max-width: 100%; }
+  #panel .bigvu { width: 180px; height: 10px; background: var(--line); border-radius: 5px; overflow: hidden; margin-bottom: 9px; }
+  #panel .bigvu i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #43a047 70%, #fdd835 85%, #e53935); }
+  #astate { flex-basis: 100%; font-size: 13px; color: var(--muted); }
+  #astate.err { color: #ff8a80; }
+  #banner { background: #1a237e; color: #fff; padding: 8px 14px; font-size: 14px; }
+  .spk.ign { opacity: .45; }
+  .spk.ign .nm { text-decoration: line-through; }
+  #menu { position: fixed; z-index: 10; width: 320px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    box-shadow: 0 10px 30px rgba(0,0,0,.5); padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+  #menu[hidden], #panel[hidden], #live[hidden], .hint[hidden], #banner[hidden] { display: none; }
+  #menu .mrow { display: flex; gap: 6px; }
+  #menu input { flex: 1; min-width: 0; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px;
+    padding: 6px 8px; font: inherit; font-size: 14px; }
+  #menu .mlab { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  #menu .mwrap { display: flex; flex-wrap: wrap; gap: 6px; }
+  #menu .mmerge { display: flex; align-items: center; gap: 6px; }
+  #menu .mmerge .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--c); }
+  #menu .mitem { text-align: left; background: transparent; padding: 7px 6px; }
+  #menu .mitem:hover { background: var(--line); }
+  #menu .danger { color: #ff8a80; }
+  #panel .thr { display: flex; flex-direction: column; gap: 4px; }
+  #panel .bigvu { position: relative; margin-bottom: 0; }
+  #panel .bigvu b, #live .vu b { position: absolute; top: -2px; bottom: -2px; width: 2px; background: #fff; left: var(--thr, 25%); }
+  #live .vu { position: relative; overflow: visible; }
+  #thr { width: 180px; margin: 0; accent-color: #fff; }
+  #thrv { font-variant-numeric: tabular-nums; color: var(--text); }
+  .hint { color: var(--muted); font-size: 12px; padding: 4px 14px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  .empty { color: var(--muted); text-align: center; margin-top: 18vh; }
+  #status { font-size: 12px; }
+  @keyframes in { from { opacity: 0; transform: translateY(4px); } }
+  @media (max-width: 640px) { .ln { grid-template-columns: 1fr; gap: 0; } .ln .n { text-align: left; } }
+</style>
+</head>
+<body>
+<header>
+  <div id="live" hidden><span class="dot"></span>Com<span class="vu"><i></i><b></b></span></div>
+  <div id="spks" style="display:contents"></div>
+  <div class="tools">
+    <span id="status">connexion…</span>
+    <button id="gear" hidden title="Choisir la carte son et l'entrée">⚙ Entrée</button>
+    <button id="fsm" title="Texte plus petit">A−</button>
+    <button id="fsp" title="Texte plus grand">A+</button>
+    <button id="snd" title="Bip sur mot-clé">🔔 Bip</button>
+    <button id="clr">Effacer</button>
+    <button id="quit" title="Arrêter Intercom Live">Quitter</button>
+  </div>
+</header>
+<div id="banner" hidden></div>
+<div id="panel" hidden>
+  <label>Carte son<select id="dev"></select></label>
+  <label>Entrée<select id="ch"></select></label>
+  <div class="thr"><label style="flex-direction:row;justify-content:space-between">Niveau / seuil <span id="thrv"></span></label>
+    <span class="bigvu"><i></i><b></b></span>
+    <input id="thr" type="range" min="-60" max="0" step="1" title="Seuil : en dessous, rien n'est transcrit (monte-le pour ignorer le retour antenne)"></div>
+  <button id="refresh" title="Après avoir branché une carte">↻ Rafraîchir</button>
+  <button id="close">OK</button>
+  <div id="astate"></div>
+</div>
+<div class="hint" id="hint" hidden>Clic sur une voix pour la renommer (Réal, Scripte…), la fusionner avec une autre, l'ignorer (retour antenne) ou la supprimer. Seuil de niveau : ⚙ Entrée.</div>
+<div id="log"><div class="empty">En attente de la com…</div></div>
+<script>
+const $ = s => document.querySelector(s);
+const log = $('#log'), spks = $('#spks');
+let speakers = [], keywords = [], hidden = new Set(), beep = true, fs = 20, follow = true, mono = false;
+const root = i => { while (speakers[i] && speakers[i].alias != null) i = speakers[i].alias; return i; };
+try { fs = +localStorage.getItem('fs') || 20; beep = localStorage.getItem('beep') !== '0'; } catch (e) {}
+document.documentElement.style.setProperty('--fs', fs + 'px');
+$('#snd').classList.toggle('on', beep);
+
+const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const kwRe = () => keywords.length ? new RegExp('\\b(' + keywords.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')\\b', 'gi') : null;
+
+function renderSpeakers() {
+  spks.innerHTML = speakers.map((s, i) => (s.alias != null || s.deleted) ? '' :
+    `<div class="spk${hidden.has(i) ? ' off' : ''}${s.named ? '' : ' unnamed'}${s.ignored ? ' ign' : ''}" data-i="${i}" style="--c:${s.color}" title="${s.ignored ? 'Voix ignorée : ses phrases ne s\'affichent pas' : 'Clic : renommer, fusionner, ignorer, supprimer'}"><span class="dot"></span><span class="nm">${s.ignored ? '🚫 ' : ''}${esc(s.name)}</span>${mono ? '' : '<span class="vu"><i></i></span>'}</div>`).join('');
+  spks.querySelectorAll('.spk').forEach(el => {
+    const i = +el.dataset.i;
+    el.onclick = e => {
+      e.stopPropagation();
+      if (!mono) { toggleHide(i); return; }
+      openMenu(i, el);
+    };
+  });
+}
+
+function toggleHide(i) {
+  hidden.has(i) ? hidden.delete(i) : hidden.add(i);
+  renderSpeakers(); refreshLines();
+}
+
+const voiceAct = body => fetch('/voice', { method: 'POST', body: JSON.stringify(body) });
+const menu = document.createElement('div'); menu.id = 'menu'; menu.hidden = true; document.body.appendChild(menu);
+document.addEventListener('click', e => { if (!menu.contains(e.target)) menu.hidden = true; });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') menu.hidden = true; });
+
+function openMenu(i, el) {
+  const s = speakers[i];
+  const others = speakers.map((o, j) => ({ o, j })).filter(({ o, j }) => j !== i && o.alias == null && !o.deleted);
+  menu.innerHTML = `
+    <div class="mrow"><input id="mname" value="${esc(s.name)}" maxlength="40"><button id="mok">Renommer</button></div>
+    ${others.length ? `<div class="mlab">C'est la même personne que…</div><div class="mwrap">${others.map(({ o, j }) =>
+      `<button class="mmerge" data-j="${j}" style="--c:${o.color}"><span class="dot"></span>${esc(o.name)}</button>`).join('')}</div>` : ''}
+    <button class="mitem" id="mhide">${hidden.has(i) ? '👁 Réafficher ses phrases' : '🙈 Masquer ses phrases (pour cette fois)'}</button>
+    <button class="mitem" id="mign">${s.ignored ? '✅ Ne plus ignorer cette voix' : '🚫 Ignorer cette voix (retour antenne, plateau…) — retenu'}</button>
+    <button class="mitem danger" id="mdel">🗑 Supprimer cette voix</button>`;
+  const r = el.getBoundingClientRect();
+  menu.style.left = Math.min(r.left, innerWidth - 330) + 'px'; menu.style.top = (r.bottom + 6) + 'px';
+  menu.hidden = false;
+  const inp = menu.querySelector('#mname');
+  inp.focus(); inp.select();
+  const rename = () => { const v = inp.value.trim(); if (v && v !== s.name) voiceAct({ speaker: i, action: 'rename', name: v }); menu.hidden = true; };
+  menu.querySelector('#mok').onclick = rename;
+  inp.onkeydown = e => { if (e.key === 'Enter') rename(); };
+  menu.querySelectorAll('.mmerge').forEach(b => b.onclick = () => { voiceAct({ speaker: i, action: 'merge', into: +b.dataset.j }); menu.hidden = true; });
+  menu.querySelector('#mhide').onclick = () => { menu.hidden = true; toggleHide(i); };
+  menu.querySelector('#mign').onclick = () => { voiceAct({ speaker: i, action: s.ignored ? 'unignore' : 'ignore' }); menu.hidden = true; };
+  const del = menu.querySelector('#mdel');
+  del.onclick = () => {
+    if (del.dataset.sure) { voiceAct({ speaker: i, action: 'delete' }); menu.hidden = true; return; }
+    del.dataset.sure = 1; del.textContent = '🗑 Confirmer : supprimer « ' + s.name + ' » ?';
+  };
+}
+
+function refreshLines() {
+  log.querySelectorAll('.ln').forEach(l => {
+    const r = root(+l.dataset.s), sp = speakers[r];
+    if (!sp) return;
+    l.style.setProperty('--c', sp.color);
+    l.querySelector('.n').textContent = sp.name;
+    l.classList.toggle('hidden', hidden.has(r) || !!sp.ignored);
+  });
+}
+
+function addLine(ev) {
+  const e = log.querySelector('.empty'); if (e) e.remove();
+  const re = kwRe();
+  let html = esc(ev.text);
+  if (re) html = html.replace(re, '<mark>$1</mark>');
+  const d = document.createElement('div');
+  const r = root(ev.speaker), sp = speakers[r] || { name: '?', color: '#888' };
+  d.className = 'ln' + (ev.alert ? ' alert' : '') + (hidden.has(r) ? ' hidden' : '');
+  d.dataset.s = ev.speaker;
+  d.style.setProperty('--c', sp.color);
+  d.title = `latence ${ev.latency}s`;
+  d.innerHTML = `<span class="t">${ev.time}</span><span class="n">${esc(sp.name)}</span><span class="x">${html}</span>`;
+  log.appendChild(d);
+  while (log.children.length > 600) log.firstChild.remove();
+  if (follow) log.scrollTop = log.scrollHeight;
+}
+
+let actx;
+function ding() {
+  if (!beep) return;
+  try {
+    actx = actx || new AudioContext();
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.frequency.value = 1320; g.gain.setValueAtTime(.15, actx.currentTime);
+    g.gain.exponentialRampToValueAtTime(.001, actx.currentTime + .25);
+    o.connect(g).connect(actx.destination); o.start(); o.stop(actx.currentTime + .25);
+  } catch (e) {}
+}
+
+log.addEventListener('scroll', () => { follow = log.scrollHeight - log.scrollTop - log.clientHeight < 60; });
+$('#fsp').onclick = () => setFs(fs + 2);
+$('#fsm').onclick = () => setFs(Math.max(12, fs - 2));
+function setFs(v) { fs = v; document.documentElement.style.setProperty('--fs', fs + 'px'); try { localStorage.setItem('fs', fs); } catch (e) {} }
+$('#snd').onclick = () => { beep = !beep; $('#snd').classList.toggle('on', beep); try { localStorage.setItem('beep', beep ? '1' : '0'); } catch (e) {} };
+$('#clr').onclick = () => { log.innerHTML = ''; };
+$('#quit').onclick = async () => {
+  const b = $('#quit');
+  if (!b.dataset.sure) { b.dataset.sure = 1; b.textContent = 'Sûr ?'; setTimeout(() => { delete b.dataset.sure; b.textContent = 'Quitter'; }, 3000); return; }
+  try { await fetch('/quit', { method: 'POST', body: '{}' }); } catch (e) {}
+  document.body.innerHTML = '<div class="empty">Intercom Live est arrêté. Tu peux fermer cette fenêtre.</div>';
+  setTimeout(() => window.close(), 800);
+};
+
+// ---- choix de l'entrée audio
+let devs = [], audio = null;
+function setVU(db) {
+  const w = Math.max(0, Math.min(100, (db + 60) / 60 * 100)) + '%';
+  document.querySelectorAll('#live .vu i, #panel .bigvu i').forEach(b => b.style.width = w);
+}
+function showAudio(a) {
+  audio = a;
+  const st = $('#astate'), cur = a && a.current;
+  st.classList.toggle('err', !!(a && a.error));
+  st.textContent = a && a.error ? a.error
+    : cur ? `Écoute : ${cur.name}${cur.channel ? ' — entrée ' + cur.channel : ''} (${cur.samplerate / 1000} kHz).` + (a.saved ? ' Choix retenu pour la prochaine fois.' : ' Choisis la carte et l\'entrée où arrive la com, et vérifie que le niveau bouge quand ça parle.')
+    : 'Aucune entrée ouverte.';
+  if (a && (a.error || !a.saved)) $('#panel').hidden = false;  // 1er lancement ou souci : on montre le choix
+  if (cur && devs.length) { $('#dev').value = cur.device; fillChannels(cur.channel); }
+}
+function fillChannels(sel) {
+  const d = devs.find(d => d.index == $('#dev').value);
+  const n = d ? d.inputs : 0;
+  $('#ch').innerHTML = Array.from({ length: Math.min(n, 64) }, (_, i) => `<option value="${i + 1}">${i + 1}</option>`).join('');
+  $('#ch').disabled = !mono;
+  if (sel) $('#ch').value = sel;
+}
+async function loadDevices(refresh) {
+  const st = $('#astate');
+  st.classList.remove('err'); st.textContent = 'Recherche des cartes son…';
+  let r;
+  try {
+    const ctl = new AbortController(); const to = setTimeout(() => ctl.abort(), 8000);
+    r = await (await fetch('/devices' + (refresh ? '?refresh=1' : ''), { signal: ctl.signal })).json();
+    clearTimeout(to);
+  } catch (e) {
+    $('#panel').hidden = false; st.classList.add('err');
+    st.textContent = "Le logiciel ne répond pas à la demande de liste des cartes son (" + e.name + "). Regarde la fenêtre Terminal et envoie son contenu.";
+    return;
+  }
+  devs = r.devices || [];
+  $('#dev').innerHTML = devs.map(d => `<option value="${d.index}">${esc(d.name)} (${d.inputs} entrée${d.inputs > 1 ? 's' : ''})</option>`).join('')
+    || '<option>Aucune carte son trouvée</option>';
+  fillChannels();
+  showAudio(r);
+  if (!devs.length) {
+    $('#panel').hidden = false; st.classList.add('err');
+    st.textContent = "Aucune carte son vue par le logiciel. Autorise « Intercom Live » (ou Terminal) dans Réglages Système > Confidentialité et sécurité > Micro, puis relance l'app. Détail : " + (r.diag || '?');
+  }
+}
+async function applyAudio() {
+  $('#astate').textContent = 'Ouverture…';
+  const r = await (await fetch('/audio', { method: 'POST', body: JSON.stringify({ device: +$('#dev').value, channel: +$('#ch').value || 1 }) })).json();
+  showAudio(r);
+}
+$('#dev').onchange = () => { fillChannels(1); applyAudio(); };
+$('#ch').onchange = applyAudio;
+$('#refresh').onclick = () => loadDevices(true);
+$('#close').onclick = () => $('#panel').hidden = true;
+$('#gear').onclick = () => { $('#panel').hidden = !$('#panel').hidden; if (!$('#panel').hidden) loadDevices(); };
+let thrTimer;
+function showThr(db) {
+  $('#thr').value = db; $('#thrv').textContent = Math.round(db) + ' dB';
+  document.documentElement.style.setProperty('--thr', ((db + 60) / 60 * 100) + '%');
+}
+$('#thr').oninput = () => {
+  showThr(+$('#thr').value);
+  clearTimeout(thrTimer);
+  thrTimer = setTimeout(() => fetch('/vad', { method: 'POST', body: JSON.stringify({ threshold_db: +$('#thr').value }) }), 250);
+};
+function showStatus(t) { $('#banner').hidden = !t; $('#banner').textContent = t || ''; }
+
+if (location.protocol === 'file:') {
+  log.innerHTML = '<div class="empty">Cette page s\'ouvre via le logiciel, pas en double-cliquant sur le fichier.<br>Lance <b>lancer.command</b> : la bonne fenêtre s\'ouvrira toute seule.</div>';
+}
+fetch('/config').then(r => r.json()).then(c => {
+  speakers = c.speakers; keywords = c.keywords; mono = c.mode === 'mono';
+  $('#live').hidden = !mono; $('#hint').hidden = !mono;
+  renderSpeakers();
+  c.history.forEach(addLine);
+  showStatus(c.status);
+  showThr(c.threshold_db);
+  if (c.live) { $('#gear').hidden = false; loadDevices(); }
+  const es = new EventSource('/events');
+  let lost = false;
+  es.onopen = () => { if (lost) location.reload(); $('#status').textContent = 'en direct'; };  // le logiciel a redémarré
+  es.onerror = () => { lost = true; $('#status').textContent = 'reconnexion…'; };
+  es.onmessage = m => {
+    const ev = JSON.parse(m.data);
+    if (ev.type === 'line') { addLine(ev); if (ev.alert) ding(); }
+    else if (ev.type === 'speakers') {
+      speakers = ev.speakers;
+      if (!spks.querySelector('[contenteditable="true"]')) renderSpeakers();
+      refreshLines();
+    }
+    else if (ev.type === 'audio') showAudio(ev);
+    else if (ev.type === 'status') showStatus(ev.text);
+    else if (ev.type === 'vad') showThr(ev.threshold_db);
+    else if (ev.type === 'reload') location.reload();
+    else if (ev.type === 'restarting') showStatus('↻ Mise à jour installée, redémarrage (quelques secondes)…');
+    else if (ev.type === 'levels' && mono) setVU(ev.db[0] ?? -120);
+    else if (ev.type === 'activity') $('#live').classList.toggle('on', ev.talking);
+    else if (ev.type === 'talk') spks.querySelector(`[data-i="${ev.speaker}"]`)?.classList.toggle('talking', ev.talking);
+    else if (ev.type === 'levels' && !mono) (setVU(Math.max(...ev.db)), ev.db).forEach((db, i) => {
+      const bar = spks.querySelector(`[data-i="${i}"] .vu i`);
+      if (bar) bar.style.width = Math.max(0, Math.min(100, (db + 60) / 60 * 100)) + '%';
+    });
+  };
+});
+</script>
+</body>
+</html>

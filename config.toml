@@ -1,0 +1,55 @@
+# Intercom Live — configuration
+
+[audio]
+# mono  : toute la com sur un seul canal (ex. sortie mono du Solidcom M1). Les voix sont reconnues automatiquement.
+# multi : un canal par poste (voir les blocs [[speakers]] plus bas).
+mode = "mono"
+# Nom (ou morceau du nom) de l'interface audio, ou son numéro. Voir : ./lancer.command --list-devices
+# Exemples : "Scarlett", "MOTU", "USB Audio CODEC", "Dante Virtual Soundcard"
+device = "default"
+samplerate = 48000
+channel = 1        # entrée de l'interface sur laquelle arrive la com (mode mono)
+gain_db = 0        # à monter si la com arrive bas
+
+[asr]
+language = "fr"
+# large-v3-turbo : meilleur compromis précision/vitesse. Sur un Mac plus ancien : "small" ou "medium".
+model = "large-v3-turbo"
+backend = "auto"     # auto (mlx sur Apple Silicon si installé, sinon faster-whisper) | mlx | faster
+# Vocabulaire de régie pour aider Whisper (noms propres, jargon, noms des cadreurs…)
+initial_prompt = "Com de régie télé. Caméra 1, cam 2, top, antenne, PAD, VT, lancement, retour, plateau, jingle, ouverture micro, HF, son, régie, scripte, réal, truquiste."
+
+[voix]
+# Ressemblance minimale (0 à 1) pour rattacher une phrase à une voix déjà connue.
+# Trop de « Voix N » pour la même personne → baisse (0.35). Deux personnes confondues → monte (0.5).
+seuil = 0.40
+fichier = "voix.json"     # voix nommées, retenues d'une émission à l'autre
+
+[vad]
+threshold_db = -45      # niveau au-dessus duquel on considère qu'il y a de la parole (dBFS)
+hangover_ms = 450       # silence avant de considérer la phrase finie (court = coupe mieux entre deux voix)
+preroll_ms = 300        # audio gardé avant le déclenchement (évite de couper le début des mots)
+min_speech_ms = 350     # ignore les clics / bruits très courts
+max_segment_s = 12      # coupe les tirades longues pour garder le texte au fil de l'eau
+
+[ui]
+# Mots ou expressions qui déclenchent surlignage + bip. Éviter « son » seul (possessif très fréquent).
+keywords = ["le son", "au son", "Clément", "micro", "HF", "retour son"]
+port = 8765
+log_dir = "transcripts"
+open_browser = true
+
+# ---- Mode multi uniquement : un bloc par poste
+[[speakers]]
+channel = 1
+name = "Réal"
+color = "#ff7043"
+
+[[speakers]]
+channel = 2
+name = "Scripte"
+color = "#ab47bc"
+
+[maj]
+# Dépôt GitHub d'où l'app télécharge toute seule ses mises à jour (vide = pas de mise à jour auto).
+depot = "ClementLprt/Test"

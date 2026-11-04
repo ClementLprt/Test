@@ -1,0 +1,7 @@
+numpy
+sounddevice
+soundfile
+sherpa-onnx
+# Mac Apple Silicon : mlx-whisper (rapide). Autres machines : faster-whisper.
+mlx-whisper; sys_platform == "darwin" and platform_machine == "arm64"
+faster-whisper; sys_platform != "darwin" or platform_machine != "arm64"
