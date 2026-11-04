@@ -493,20 +493,48 @@ class Transcriber:
             import mlx_whisper
             r = mlx_whisper.transcribe(
                 audio, path_or_hf_repo=self._mlx_repo, language=self.cfg.language,
-                initial_prompt=prompt, condition_on_previous_text=False, temperature=0.0,
-                no_speech_threshold=0.6, logprob_threshold=-1.0,
+                initial_prompt=prompt, condition_on_previous_text=False, temperature=(0.0, 0.2, 0.4),
+                compression_ratio_threshold=2.0, no_speech_threshold=0.6, logprob_threshold=-1.0,
             )
             return [(float(s["start"]), float(s["end"]), s["text"].strip())
                     for s in r.get("segments", []) if s.get("no_speech_prob", 0) < 0.6]
         segs, _ = self._fw.transcribe(
             audio, language=self.cfg.language, initial_prompt=prompt, beam_size=1,
-            condition_on_previous_text=False, vad_filter=False, temperature=0.0,
+            condition_on_previous_text=False, vad_filter=False, temperature=[0.0, 0.2, 0.4],
+            compression_ratio_threshold=2.0,
         )
         return [(s.start, s.end, s.text.strip()) for s in segs if s.no_speech_prob < 0.6]
 
 
+def collapse_repeats(t: str) -> str:
+    """Whisper part parfois en boucle (« caméra 1, caméra 1, caméra 1… ») : on ne garde qu'une fois
+    tout groupe de 1 à 8 mots répété 3 fois ou plus d'affilée (2 fois est gardé : « top, top »)."""
+    words = t.split()
+    key = [re.sub(r"[^\w]", "", w.lower()) for w in words]
+    out, i = [], 0
+    while i < len(words):
+        done = False
+        for n in range(1, 9):
+            if i + 3 * n > len(words):
+                break
+            unit = key[i:i + n]
+            if not any(unit):
+                continue
+            reps = 1
+            while key[i + reps * n:i + (reps + 1) * n] == unit:
+                reps += 1
+            if reps >= 3:
+                out.extend(words[i:i + n])
+                i += reps * n
+                done = True
+                break
+        if not done:
+            out.append(words[i]); i += 1
+    return re.sub(r"[,\s]+$", "", " ".join(out)) if len(out) < len(words) else t
+
+
 def clean_text(t: str) -> str:
-    t = re.sub(r"\s+", " ", t).strip()
+    t = collapse_repeats(re.sub(r"\s+", " ", t).strip())
     if not t or HALLU_RE.search(t):
         return ""
     return t
@@ -730,7 +758,8 @@ class Engine:
         t_start = time.time()
         try:
             pieces = [(s, e, clean_text(t)) for s, e, t in self.asr.transcribe(audio)]
-            pieces = [p for p in pieces if p[2]]
+            pieces = [p for k, p in enumerate(pieces)   # segments identiques à la suite = boucle de Whisper
+                      if p[2] and (k == 0 or _fold(p[2])[0] != _fold(pieces[k - 1][2])[0])]
             if not pieces:
                 return
             if self.mono:

@@ -17,7 +17,7 @@ language = "fr"
 model = "large-v3-turbo"
 backend = "auto"     # auto (mlx sur Apple Silicon si installé, sinon faster-whisper) | mlx | faster
 # Vocabulaire de régie pour aider Whisper (noms propres, jargon, noms des cadreurs…)
-initial_prompt = "Com de régie télé. Caméra 1, cam 2, top, antenne, PAD, VT, lancement, retour, plateau, jingle, ouverture micro, HF, son, régie, scripte, réal, truquiste."
+initial_prompt = "Com de régie télé. Top, antenne, PAD, VT, lancement, retour, plateau, jingle, ouverture micro, HF, son, régie, scripte, réal, truquiste."
 
 [voix]
 # Ressemblance minimale (0 à 1) pour rattacher une phrase à une voix déjà connue.
