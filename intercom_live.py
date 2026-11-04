@@ -512,6 +512,138 @@ def clean_text(t: str) -> str:
     return t
 
 
+# --------------------------------------------------------------------------- alerte « ça me concerne »
+
+DEFAULT_NAMES = ["Clément", "Clem"]
+DEFAULT_WORDS = [
+    "le son", "du son", "au son", "côté son", "ingé son", "régie son", "bande son", "son coupé", "pas de son",
+    "micro", "HF", "retour", "niveau", "volume", "trop fort", "pas assez fort", "on n'entend", "on entend",
+    "j'entends", "entend pas", "entend rien", "larsen", "souffle", "grésille", "sature", "saturé", "audio",
+    "mixage", "console", "fader", "média", "playback", "musique", "jingle", "perche", "cravate", "oreillette",
+    "ear", "casque", "PAD son", "virgule",
+]
+
+
+def _fold(t: str) -> tuple[str, list[int]]:
+    """Minuscules sans accents + correspondance vers les positions du texte d'origine."""
+    import unicodedata
+    out, idx = [], []
+    for i, ch in enumerate(t.replace("’", "'")):
+        for c in unicodedata.normalize("NFD", ch):
+            if unicodedata.category(c) != "Mn":
+                out.append(c.lower())
+                idx.append(i)
+    return "".join(out), idx
+
+
+class Detector:
+    """Repère ce qui concerne l'ingé son : son prénom (même mal transcrit) et le vocabulaire du son."""
+
+    def __init__(self, names: list[str], words: list[str], enabled: bool = True):
+        import difflib
+        self._ratio = lambda a, b: difflib.SequenceMatcher(None, a, b).ratio()
+        self.enabled = enabled
+        self.names = [n.strip() for n in names if n.strip()]
+        self.words = [w.strip() for w in words if w.strip()]
+        self._names = [_fold(n)[0] for n in self.names]
+        pats = [r"\s+".join(re.escape(part) for part in _fold(w)[0].split()) + r"(?:s|x)?" for w in self.words]
+        self._words_re = re.compile(r"(?<![\w])(" + "|".join(pats) + r")(?![\w])") if pats else None
+
+    def find(self, text: str) -> list[str]:
+        """Renvoie les passages du texte qui ont déclenché l'alerte (dans l'orthographe d'origine)."""
+        if not self.enabled:
+            return []
+        folded, idx = _fold(text)
+        spans = []
+        for m in re.finditer(r"[a-z]+", folded):           # prénom, avec tolérance aux fautes de Whisper
+            tok = m.group()
+            for n in self._names:
+                if tok == n or (len(n) >= 4 and len(tok) >= 4 and self._ratio(tok, n) >= 0.8):
+                    spans.append((m.start(), m.end()))
+                    break
+        if self._words_re:
+            spans += [(m.start(), m.end()) for m in self._words_re.finditer(folded)]
+        out = []
+        for a, b in sorted(spans):
+            piece = text.replace("’", "'")[idx[a]: idx[b - 1] + 1]
+            if piece and piece not in out:
+                out.append(piece)
+        return out
+
+
+def load_detector(cfg: "Config") -> Detector:
+    a = load_settings().get("alerte", {})
+    names = list(a.get("prenoms", DEFAULT_NAMES))
+    words = a.get("mots") or [k for k in DEFAULT_WORDS + list(cfg.keywords)
+                              if _fold(k)[0] not in {_fold(n)[0] for n in names}]
+    seen, uniq = set(), []
+    for w in words:
+        f = _fold(w)[0].strip()
+        if f and f not in seen:
+            seen.add(f); uniq.append(w)
+    return Detector(names, uniq, a.get("actif", True))
+
+
+GUI_ACTIVE = False
+_flash_windows: list = []
+_last_flash = 0.0
+
+
+def flash_screen(force: bool = False):
+    """Gros flash blanc sur tous les écrans, par-dessus toutes les apps (même en plein écran), et l'icône
+    du Dock qui rebondit. Ne fait rien hors de la vraie fenêtre Mac (la page fait alors son propre flash)."""
+    global _last_flash
+    if not GUI_ACTIVE or (not force and time.time() - _last_flash < 3):
+        return
+    _last_flash = time.time()
+    try:
+        from PyObjCTools import AppHelper
+        AppHelper.callAfter(_flash_start)
+    except Exception as e:
+        print(f"[alerte] flash impossible : {e!r}", flush=True)
+
+
+def _flash_start():
+    from AppKit import (NSApplication, NSBackingStoreBuffered, NSColor, NSScreen, NSWindow,
+                        NSScreenSaverWindowLevel)
+    from PyObjCTools import AppHelper
+    for w in _flash_windows:
+        w.orderOut_(None)
+    _flash_windows.clear()
+    for scr in NSScreen.screens():
+        w = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(scr.frame(), 0, NSBackingStoreBuffered, False)
+        w.setBackgroundColor_(NSColor.whiteColor())
+        w.setOpaque_(False)
+        w.setAlphaValue_(0.0)
+        w.setLevel_(NSScreenSaverWindowLevel)
+        w.setIgnoresMouseEvents_(True)
+        w.setReleasedWhenClosed_(False)
+        w.setCollectionBehavior_((1 << 0) | (1 << 4) | (1 << 8))  # tous les bureaux, fixe, par-dessus le plein écran
+        w.orderFrontRegardless()
+        _flash_windows.append(w)
+    # deux éclairs francs, puis un fondu
+    steps = [(0.00, 0.95), (0.12, 0.0), (0.24, 0.95), (0.36, 0.0), (0.48, 0.9)]
+    steps += [(0.48 + 0.05 * k, 0.9 * (1 - k / 12)) for k in range(1, 13)]
+    for t, alpha in steps:
+        AppHelper.callLater(t, _flash_alpha, alpha)
+    AppHelper.callLater(steps[-1][0] + 0.05, _flash_end)
+    try:
+        NSApplication.sharedApplication().requestUserAttention_(0)   # l'icône rebondit dans le Dock
+    except Exception:
+        pass
+
+
+def _flash_alpha(alpha: float):
+    for w in _flash_windows:
+        w.setAlphaValue_(alpha)
+
+
+def _flash_end():
+    for w in _flash_windows:
+        w.orderOut_(None)
+    _flash_windows.clear()
+
+
 # --------------------------------------------------------------------------- engine
 
 class Engine:
@@ -522,8 +654,7 @@ class Engine:
         log_dir = local_path(cfg.log_dir)
         log_dir.mkdir(parents=True, exist_ok=True)
         self.log_path = log_dir / f"com_{dt.datetime.now():%Y-%m-%d_%Hh%M}.txt"
-        self.kw_re = (re.compile(r"\b(" + "|".join(re.escape(k) for k in cfg.keywords) + r")\b", re.I)
-                      if cfg.keywords else None)
+        self.detector = load_detector(cfg)
 
     @property
     def mono(self) -> bool:
@@ -615,11 +746,14 @@ class Engine:
         spk_list = self.speakers_public()
         for spk, text in lines:
             sp = spk_list[spk]
-            hit = bool(self.kw_re and self.kw_re.search(text))
+            hits = self.detector.find(text)
+            hit = bool(hits)
+            if hit:
+                flash_screen()
             ev = {
                 "type": "line", "speaker": spk, "text": text,
                 "time": dt.datetime.fromtimestamp(t0).strftime("%H:%M:%S"),
-                "alert": hit, "latency": round(time.time() - t0, 1),
+                "alert": hit, "hits": hits, "latency": round(time.time() - t0, 1),
                 "asr_s": round(time.time() - t_start, 2),
             }
             self.bus.publish(ev)
@@ -823,7 +957,9 @@ def make_handler(cfg: Config, bus: EventBus, eng: Engine, live: "LiveAudio | Non
                 self._json({"mode": cfg.mode, "speakers": eng.speakers_public(), "live": live is not None,
                             "audio": live.status() if live else None, "status": bus.status,
                             "threshold_db": cfg.vad_threshold_db,
-                            "keywords": cfg.keywords, "history": bus.history})
+                            "keywords": cfg.keywords, "history": bus.history, "native": GUI_ACTIVE,
+                            "alerte": {"actif": eng.detector.enabled, "prenoms": eng.detector.names,
+                                       "mots": eng.detector.words}})
             elif self.path.startswith("/devices") and live:
                 try:
                     devs = live.devices(refresh="refresh" in self.path)
@@ -858,6 +994,17 @@ def make_handler(cfg: Config, bus: EventBus, eng: Engine, live: "LiveAudio | Non
             if self.path == "/audio" and live:
                 ok = live.start(int(req["device"]), req.get("channel"), save=True)
                 self._json({"ok": ok, **live.status()})
+            elif self.path == "/alerte":
+                d = {"actif": bool(req.get("actif", True)),
+                     "prenoms": [str(x)[:40] for x in req.get("prenoms", [])][:20],
+                     "mots": [str(x)[:60] for x in req.get("mots", [])][:300]}
+                save_settings(alerte=d)
+                eng.detector = Detector(d["prenoms"], d["mots"], d["actif"])
+                self._json({"ok": True})
+            elif self.path == "/flash-test":
+                flash_screen(force=True)
+                bus.publish({"type": "flash"})
+                self._json({"ok": True, "native": GUI_ACTIVE})
             elif self.path == "/open-transcripts":
                 import subprocess
                 local_path(cfg.log_dir).mkdir(parents=True, exist_ok=True)
@@ -938,6 +1085,8 @@ def run_native_window(url: str):
         except Exception:
             pass
 
+    global GUI_ACTIVE
+    GUI_ACTIVE = True
     webview.create_window("Intercom Live", url, width=1100, height=750, min_size=(640, 420),
                           background_color="#0e1013", text_select=True)
     webview.start(set_icon)

@@ -78,6 +78,17 @@
   #live .vu { position: relative; overflow: visible; }
   #thr { width: 180px; margin: 0; accent-color: #fff; }
   #thrv { font-variant-numeric: tabular-nums; color: var(--text); }
+  #apanel { background: var(--panel); border-bottom: 1px solid var(--line); padding: 12px 14px; display: flex;
+    flex-direction: column; gap: 10px; font-size: 13px; color: var(--muted); max-width: 760px; }
+  #apanel label { display: flex; flex-direction: column; gap: 4px; }
+  #apanel label.chk { flex-direction: row; align-items: center; gap: 8px; color: var(--text); font-size: 15px; }
+  #apanel input:not([type]), #apanel textarea { background: var(--bg); color: var(--text); border: 1px solid var(--line);
+    border-radius: 6px; padding: 7px 9px; font: inherit; font-size: 14px; }
+  #apanel .arow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  #apanel[hidden] { display: none; }
+  #flash { position: fixed; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 50; }
+  #flash.go { animation: flash 1.1s ease-out; }
+  @keyframes flash { 0% { opacity: .95 } 11% { opacity: 0 } 22% { opacity: .95 } 33% { opacity: 0 } 44% { opacity: .9 } 100% { opacity: 0 } }
   .hint { color: var(--muted); font-size: 12px; padding: 4px 14px; background: var(--panel); border-bottom: 1px solid var(--line); }
   .empty { color: var(--muted); text-align: center; margin-top: 18vh; }
   #status { font-size: 12px; }
@@ -91,6 +102,7 @@
   <div id="spks" style="display:contents"></div>
   <div class="tools">
     <span id="status">connexion…</span>
+    <button id="alrt" title="Ce qui déclenche le flash blanc">⚡ Alertes</button>
     <button id="gear" hidden title="Choisir la carte son et l'entrée">⚙ Entrée</button>
     <button id="fsm" title="Texte plus petit">A−</button>
     <button id="fsp" title="Texte plus grand">A+</button>
@@ -101,6 +113,15 @@
   </div>
 </header>
 <div id="banner" hidden></div>
+<div id="apanel" hidden>
+  <label class="chk"><input type="checkbox" id="aon"> Flash blanc sur tout l'écran quand ça me concerne</label>
+  <label>Mon prénom (et surnoms), séparés par des virgules — les fautes de transcription sont tolérées
+    <input id="anames" placeholder="Clément, Clem"></label>
+  <label>Mots et expressions qui me concernent (un par ligne)
+    <textarea id="awords" rows="6"></textarea></label>
+  <div class="arow"><button id="atest">⚡ Tester le flash</button><button id="asave">Enregistrer</button><button id="aclose">Fermer</button><span id="astatus"></span></div>
+</div>
+<div id="flash"></div>
 <div id="panel" hidden>
   <label>Carte son<select id="dev"></select></label>
   <label>Entrée<select id="ch"></select></label>
@@ -190,7 +211,10 @@ function addLine(ev) {
   const e = log.querySelector('.empty'); if (e) e.remove();
   const re = kwRe();
   let html = esc(ev.text);
-  if (re) html = html.replace(re, '<mark>$1</mark>');
+  if (ev.hits && ev.hits.length) {
+    const hre = new RegExp('(' + ev.hits.map(h => esc(h).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')', 'g');
+    html = html.replace(hre, '<mark>$1</mark>');
+  } else if (re) html = html.replace(re, '<mark>$1</mark>');
   const d = document.createElement('div');
   const r = root(ev.speaker), sp = speakers[r] || { name: '?', color: '#888' };
   d.className = 'ln' + (ev.alert ? ' alert' : '') + (hidden.has(r) ? ' hidden' : '');
@@ -296,6 +320,27 @@ $('#thr').oninput = () => {
   clearTimeout(thrTimer);
   thrTimer = setTimeout(() => fetch('/vad', { method: 'POST', body: JSON.stringify({ threshold_db: +$('#thr').value }) }), 250);
 };
+// ---- alertes « ça me concerne »
+let alerte = { actif: true, prenoms: [], mots: [] };
+function pageFlash() {
+  if (!alerte.actif) return;
+  const f = $('#flash'); f.classList.remove('go'); void f.offsetWidth; f.classList.add('go');
+}
+function fillAlerte() {
+  $('#aon').checked = alerte.actif; $('#anames').value = alerte.prenoms.join(', '); $('#awords').value = alerte.mots.join('\n');
+}
+$('#alrt').onclick = () => { $('#apanel').hidden = !$('#apanel').hidden; fillAlerte(); $('#astatus').textContent = ''; };
+$('#aclose').onclick = () => $('#apanel').hidden = true;
+$('#asave').onclick = async () => {
+  alerte = { actif: $('#aon').checked,
+    prenoms: $('#anames').value.split(',').map(x => x.trim()).filter(Boolean),
+    mots: $('#awords').value.split(/\n|,/).map(x => x.trim()).filter(Boolean) };
+  await fetch('/alerte', { method: 'POST', body: JSON.stringify(alerte) });
+  $('#astatus').textContent = '✓ Enregistré';
+};
+$('#aon').onchange = () => $('#asave').click();
+$('#atest').onclick = () => fetch('/flash-test', { method: 'POST', body: '{}' });
+
 function showStatus(t) { $('#banner').hidden = !t; $('#banner').textContent = t || ''; }
 
 if (location.protocol === 'file:') {
@@ -303,6 +348,7 @@ if (location.protocol === 'file:') {
 }
 fetch('/config').then(r => r.json()).then(c => {
   speakers = c.speakers; keywords = c.keywords; mono = c.mode === 'mono';
+  if (c.alerte) alerte = c.alerte;
   $('#live').hidden = !mono; $('#hint').hidden = !mono;
   renderSpeakers();
   c.history.forEach(addLine);
@@ -315,7 +361,8 @@ fetch('/config').then(r => r.json()).then(c => {
   es.onerror = () => { lost = true; $('#status').textContent = 'reconnexion…'; };
   es.onmessage = m => {
     const ev = JSON.parse(m.data);
-    if (ev.type === 'line') { addLine(ev); if (ev.alert) ding(); }
+    if (ev.type === 'line') { addLine(ev); if (ev.alert) { ding(); pageFlash(); } }
+    else if (ev.type === 'flash') { const a = alerte.actif; alerte.actif = true; pageFlash(); alerte.actif = a; }
     else if (ev.type === 'speakers') {
       speakers = ev.speakers;
       if (!spks.querySelector('[contenteditable="true"]')) renderSpeakers();
