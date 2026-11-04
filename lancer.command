@@ -31,12 +31,21 @@ find_python() {
   done
 }
 
+pip_install() {   # venv classique (pip) ou créé par uv (sans pip)
+  if .venv/bin/python -m pip --version >/dev/null 2>&1; then
+    .venv/bin/python -m pip install -q --upgrade pip && .venv/bin/python -m pip install -r requirements.txt
+  else
+    UV=$(command -v uv || echo "$HOME/.local/bin/uv")
+    "$UV" pip install --python .venv/bin/python -r requirements.txt
+  fi
+}
+
 install_venv() {
   PY=$(find_python)
   [ $APPMODE = 1 ] && notify "Installation des modules (quelques minutes)…"
   if [ -n "$PY" ]; then
     echo "Installation avec $PY ($("$PY" --version))…"
-    "$PY" -m venv .venv && .venv/bin/pip install -q --upgrade pip && .venv/bin/pip install -r requirements.txt \
+    "$PY" -m venv .venv && pip_install \
       || { rm -rf .venv; fail "L'installation des modules a échoué."; }
   else
     if [ $APPMODE = 0 ]; then
@@ -86,7 +95,7 @@ while true; do
   # nouveaux modules demandés par une mise à jour ?
   if [ "$(shasum requirements.txt | cut -d' ' -f1)" != "$(cat .venv/.req_hash 2>/dev/null)" ]; then
     echo "Mise à jour des modules…"
-    .venv/bin/pip install -r requirements.txt && shasum requirements.txt | cut -d' ' -f1 > .venv/.req_hash
+    pip_install && shasum requirements.txt | cut -d' ' -f1 > .venv/.req_hash
   fi
   if [ $APPMODE = 1 ]; then
     .venv/bin/python -u intercom_live.py --app $EXTRA "$@" &

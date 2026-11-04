@@ -950,7 +950,7 @@ def install_app_bundle() -> Path:
         "NSMicrophoneUsageDescription": "Intercom Live écoute la com de régie pour l'écrire en direct.",
     }, (contents / "Info.plist").open("wb"))
     exe = contents / "MacOS" / "IntercomLive"
-    exe.write_text(f'#!/bin/bash\nexec /bin/bash "{HERE / "lancer.command"}" --app\n', encoding="utf-8")
+    exe.write_text(f'#!/bin/bash\nexec /bin/bash "{HERE_FOR_BUNDLE / "lancer.command"}" --app\n', encoding="utf-8")
     exe.chmod(0o755)
     try:  # icône (best effort)
         iconset = DATA_DIR / "icon.iconset"
@@ -1024,6 +1024,46 @@ def auto_update(repo: str, every_s: int = 120):
         time.sleep(every_s)
 
 
+APP_HOME = DATA_DIR / "app"   # emplacement de l'app que macOS laisse lire quand on la lance depuis le Dock
+
+
+def relocate_out_of_documents(bus: "EventBus | None" = None) -> bool:
+    """La v1.0/1.1 a pu s'installer dans ~/Documents : macOS interdit alors à l'app du Dock de lire ses
+    fichiers. Lancé depuis le Terminal (qui, lui, y a accès), on recopie l'app au bon endroit et on
+    refait l'icône. Renvoie True si l'app a été déplacée."""
+    import shutil
+    if sys.platform != "darwin" or HERE == APP_HOME:
+        return False
+    try:
+        HERE.relative_to(Path.home() / "Documents")
+    except ValueError:
+        return False
+    print(f"[app] déplacement de l'app vers {APP_HOME} (macOS bloque Documents pour l'app du Dock)…", flush=True)
+    APP_HOME.mkdir(parents=True, exist_ok=True)
+    for item in HERE.iterdir():
+        if item.name in ("dernier_lancement.log",) or item.suffix == ".maj":
+            continue
+        if item.name == ".venv" and (APP_HOME / ".venv" / "bin" / "python").exists():
+            continue   # déjà recopié lors d'un lancement précédent
+        dst = APP_HOME / item.name
+        if item.is_dir():
+            shutil.copytree(item, dst, symlinks=True, dirs_exist_ok=True)
+        else:
+            shutil.copy2(item, dst)
+    (APP_HOME / "lancer.command").chmod(0o755)
+    global HERE_FOR_BUNDLE
+    HERE_FOR_BUNDLE = APP_HOME
+    install_app_bundle()
+    print("[app] ✅ app réparée : la prochaine fois, lance « Intercom Live » depuis le Dock.", flush=True)
+    if bus:
+        bus.set_status("✅ App réparée : ferme le Terminal quand tu veux, et la prochaine fois lance « Intercom Live » "
+                       "depuis le Dock ou le Launchpad.")
+    return True
+
+
+HERE_FOR_BUNDLE = HERE
+
+
 def watch_for_updates(bus: "EventBus"):
     """Quand le code est mis à jour (par Claude), recharge la page ou relance le logiciel tout seul."""
     import py_compile
@@ -1076,7 +1116,8 @@ def main():
 
     if a.install_app:
         _migrate_old_data()
-        install_app_bundle()
+        if not relocate_out_of_documents():
+            install_app_bundle()
         return
 
     if a.list_devices:
@@ -1147,6 +1188,9 @@ def main():
         eng.asr = None
         bus.set_status(f"⚠ Erreur au chargement des modèles : {e!r}. Le détail est dans la fenêtre Terminal "
                        f"et dans dernier_lancement.log (dossier de l'app).")
+
+    if not a.app and not a.file:   # ancienne installation dans Documents → on répare l'app du Dock
+        threading.Thread(target=relocate_out_of_documents, args=(bus,), daemon=True).start()
 
     try:
         if a.file:
