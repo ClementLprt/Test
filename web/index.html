@@ -96,6 +96,7 @@
     <button id="fsp" title="Texte plus grand">A+</button>
     <button id="snd" title="Bip sur mot-clé">🔔 Bip</button>
     <button id="clr">Effacer</button>
+    <button id="logs" title="Ouvrir le dossier des transcriptions dans le Finder">📄 Transcriptions</button>
     <button id="quit" title="Arrêter Intercom Live">Quitter</button>
   </div>
 </header>
@@ -220,6 +221,7 @@ $('#fsm').onclick = () => setFs(Math.max(12, fs - 2));
 function setFs(v) { fs = v; document.documentElement.style.setProperty('--fs', fs + 'px'); try { localStorage.setItem('fs', fs); } catch (e) {} }
 $('#snd').onclick = () => { beep = !beep; $('#snd').classList.toggle('on', beep); try { localStorage.setItem('beep', beep ? '1' : '0'); } catch (e) {} };
 $('#clr').onclick = () => { log.innerHTML = ''; };
+$('#logs').onclick = () => fetch('/open-transcripts', { method: 'POST', body: '{}' });
 $('#quit').onclick = async () => {
   const b = $('#quit');
   if (!b.dataset.sure) { b.dataset.sure = 1; b.textContent = 'Sûr ?'; setTimeout(() => { delete b.dataset.sure; b.textContent = 'Quitter'; }, 3000); return; }

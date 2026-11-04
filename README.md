@@ -20,9 +20,9 @@ pour pouvoir faire le son sans écouter la com. Tout tourne en local : aucun son
    ses phrases ne s'affichent plus, même aux prochaines émissions) ou la supprimer.
    Les voix nommées sont retenues : à l'émission suivante, la réal est reconnue directement.
 5. **Mots-clés** (« le son », ton prénom, « HF »…) : ligne surlignée + bip.
-6. Tout est aussi écrit dans `~/Documents/Intercom Live/transcripts/com_<date>.txt`.
+6. Tout est aussi écrit dans un fichier texte par émission (bouton **📄 Transcriptions** pour ouvrir le dossier).
 
-Tes voix nommées, tes réglages et les transcriptions sont rangés dans **Documents > Intercom Live**,
+Tes voix nommées, tes réglages et les transcriptions sont rangés dans `~/Library/Application Support/Intercom Live`,
 hors du dossier de l'app : pour mettre à jour, tu peux remplacer le dossier `intercom-live` sans rien perdre
 (seule la première relance réinstalle les modules, quelques minutes).
 
@@ -32,7 +32,7 @@ Colle cette ligne dans **Terminal** :
 
     bash -c "$(curl -fsSL https://raw.githubusercontent.com/ClementLprt/Test/main/install.sh)"
 
-Elle télécharge l'app dans `Documents/Intercom Live/app`, installe ce qu'il faut (si ton Mac n'a pas de
+Elle télécharge l'app dans `~/Library/Application Support/Intercom Live/app`, installe ce qu'il faut (si ton Mac n'a pas de
 Python 3.11–3.13, elle propose d'en installer un rien que pour l'app) et crée **Intercom Live** dans ton
 dossier Applications. Glisse-la dans le Dock. Au premier lancement, macOS demande l'accès au micro : accepte.
 
@@ -42,7 +42,7 @@ Ensuite, plus jamais de Terminal :
 - **Mises à jour** : automatiques. L'app vérifie toutes les 2 minutes ; quand une nouvelle version est publiée,
   elle se télécharge et l'app redémarre toute seule en quelques secondes (tes voix et réglages restent).
 
-En cas de souci, le journal est dans `Documents/Intercom Live/app/dernier_lancement.log`.
+En cas de souci, le journal est dans `~/Library/Application Support/Intercom Live/app/dernier_lancement.log`.
 
 ## Choisir la carte son et l'entrée
 

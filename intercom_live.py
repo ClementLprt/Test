@@ -121,7 +121,10 @@ class Config:
 
 # Données de l'utilisateur (voix, réglages, transcriptions, modèle de voix) : hors du dossier de l'app,
 # pour qu'une mise à jour (remplacer le dossier) ne les efface pas.
-DATA_DIR = Path(os.environ.get("INTERCOM_LIVE_DATA", Path.home() / "Documents" / "Intercom Live"))
+# (Pas dans Documents : macOS y bloque l'accès aux apps non signées lancées depuis le Dock.)
+_SUPPORT = (Path.home() / "Library" / "Application Support" / "Intercom Live") if sys.platform == "darwin" \
+    else (Path.home() / ".intercom-live")
+DATA_DIR = Path(os.environ.get("INTERCOM_LIVE_DATA", _SUPPORT))
 
 
 def _migrate_old_data():
@@ -130,17 +133,28 @@ def _migrate_old_data():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     for rel in ("voix.json", "reglages.json", "models/voix.onnx"):
         dst = DATA_DIR / rel
-        src = next((d / rel for d in (HERE, Path.home() / "Downloads" / "intercom-live") if (d / rel).exists()), None)
+        olds = (HERE, Path.home() / "Documents" / "Intercom Live", Path.home() / "Downloads" / "intercom-live")
+        src = None
+        for d in olds:
+            try:
+                if (d / rel).exists():
+                    src = d / rel
+                    break
+            except OSError:   # dossier protégé par macOS
+                pass
         if src and not dst.exists():
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src, dst)
             print(f"[données] {rel} déplacé vers {DATA_DIR}", flush=True)
-    old_tr = HERE / "transcripts"
-    if old_tr.is_dir():
-        (DATA_DIR / "transcripts").mkdir(exist_ok=True)
-        for f in old_tr.glob("*.txt"):
-            if not (DATA_DIR / "transcripts" / f.name).exists():
-                shutil.copy2(f, DATA_DIR / "transcripts" / f.name)
+    try:
+        old_tr = Path.home() / "Documents" / "Intercom Live" / "transcripts"
+        if old_tr.is_dir():
+            (DATA_DIR / "transcripts").mkdir(exist_ok=True)
+            for f in old_tr.glob("*.txt"):
+                if not (DATA_DIR / "transcripts" / f.name).exists():
+                    shutil.copy2(f, DATA_DIR / "transcripts" / f.name)
+    except OSError:
+        pass
 
 
 def local_path(p: str) -> Path:
@@ -844,6 +858,11 @@ def make_handler(cfg: Config, bus: EventBus, eng: Engine, live: "LiveAudio | Non
             if self.path == "/audio" and live:
                 ok = live.start(int(req["device"]), req.get("channel"), save=True)
                 self._json({"ok": ok, **live.status()})
+            elif self.path == "/open-transcripts":
+                import subprocess
+                local_path(cfg.log_dir).mkdir(parents=True, exist_ok=True)
+                subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", str(local_path(cfg.log_dir))])
+                self._json({"ok": True})
             elif self.path == "/quit":
                 self._json({"ok": True})
                 threading.Timer(0.3, lambda: os._exit(0)).start()
@@ -1056,6 +1075,7 @@ def main():
     a = ap.parse_args()
 
     if a.install_app:
+        _migrate_old_data()
         install_app_bundle()
         return
 

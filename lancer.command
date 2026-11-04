@@ -4,6 +4,7 @@
 #    → installe ce qu'il faut et crée l'app « Intercom Live » dans le dossier Applications de ta session.
 #  - ensuite : l'app (Launchpad, Dock, Spotlight) appelle ce script avec --app, sans Terminal.
 cd "$(dirname "$0")" || exit 1
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"   # l'app lancée du Dock a un PATH minimal
 APPDIR="$(pwd)"
 APPMODE=0; [ "$1" = "--app" ] && { APPMODE=1; shift; }
 xattr -dr com.apple.quarantine . 2>/dev/null
@@ -61,9 +62,19 @@ install_venv() {
 if [ $APPMODE = 0 ] && [ "$(uname)" = "Darwin" ] && [ "$1" != "--console" ] && [ "$1" != "--file" ] && [ "$1" != "--list-devices" ]; then
   .venv/bin/python intercom_live.py --install-app || fail "Création de l'app impossible."
   echo; echo "✅ L'app « Intercom Live » est installée dans ton dossier Applications (Launchpad / Spotlight)."
-  echo "   Glisse-la dans le Dock si tu veux. Tu peux fermer cette fenêtre."
+  echo "   Glisse-la dans le Dock si tu veux."
   open "$HOME/Applications/Intercom Live.app"
-  exit 0
+  echo "Démarrage de l'app…"
+  for i in $(seq 1 40); do
+    sleep 1
+    if curl -s -m 1 http://127.0.0.1:8765/config >/dev/null 2>&1; then
+      echo "✅ L'app tourne. Tu peux fermer cette fenêtre (Cmd+Q sur Terminal)."
+      exit 0
+    fi
+  done
+  echo; echo "⚠ L'app ne répond pas. Voici son journal :"; tail -n 30 dernier_lancement.log 2>/dev/null
+  echo; echo "Je la lance dans cette fenêtre à la place (laisse le Terminal ouvert)…"
+  pkill -f "intercom_live.py" 2>/dev/null; sleep 1
 fi
 [ "$1" = "--console" ] && shift
 
